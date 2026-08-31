@@ -19,7 +19,7 @@ Members API, consent-based attribute release, and the Valyd MCP server.
 Using the [skills CLI](https://www.skills.sh) — run from your project:
 
 ```bash
-npx skills add valyd/valyd-skills --skill valyd-integration
+npx skills add valyd-id/skills --skill valyd-integration
 ```
 
 Add `-g` to install globally (`~/.claude/skills/`) instead of into the project
@@ -28,7 +28,7 @@ Add `-g` to install globally (`~/.claude/skills/`) instead of into the project
 Or install by hand:
 
 ```bash
-git clone https://github.com/valyd/valyd-skills /tmp/valyd-skills
+git clone https://github.com/valyd-id/skills /tmp/valyd-skills
 cp -r /tmp/valyd-skills/skills/valyd-integration ~/.claude/skills/
 ```
 
