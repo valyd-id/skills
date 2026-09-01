@@ -1,132 +1,97 @@
 # Error reference
 
-Every error, both products, in the shared envelope:
+Match on the error `code`, not the message text.
 
-```json
-{
-  "success": false,
-  "error": { "code": "<error_code>", "message": "<human-readable message>" }
-}
-```
-
-Match on `error.code`, not on the message text.
+Every response carries an **`X-Request-Id`** header — log it, and quote it when contacting support.
+**Never send support your API keys, tokens, or identity data.**
 
 ---
 
-## Login with Valyd (TPSSO / OIDC)
+## Connect with Valyd (OIDC)
 
-```text
-invalid_client      -> 401, credentials wrong
-invalid_token       -> 401, access token bad/expired
-insufficient_scope  -> 403, token lacks a scope
-invalid_grant       -> 400, code or refresh token bad/expired/reused, or redirect_uri mismatch
-invalid_request     -> 400, missing or malformed parameter
-access_denied       -> 403, the user declined on the consent screen
-verifyLoginSession returns { valid: false }  -> SDK/app-level, no HTTP code
-```
+| Code | HTTP | Cause | Fix |
+| --- | --- | --- | --- |
+| `invalid_client` | 401 | `client_id` / `client_secret` wrong or mismatched | Re-check in the portal. Confirm you're not mixing environments. |
+| `invalid_token` | 401 | Access token invalid, malformed, or expired (~15 min) | Refresh, or re-authenticate |
+| `insufficient_scope` | 403 | Token lacks the required scope | Add the scope to the authorization request and re-authenticate — **and** enable it for the app in the portal |
+| `invalid_grant` | 400 | Code or refresh token invalid, expired, already used; or `redirect_uri` mismatch | Exchange codes immediately; send the same `redirect_uri` at authorize and token |
+| `invalid_request` | 400 | Missing or malformed parameter | Check required parameters |
+| `access_denied` | 403 | The user declined on the consent screen | Not a bug — prompt again or explain why |
+| — | **410** | You called a legacy `/api/auth/tpsso/*` endpoint | Move to `/api/auth/oidc/*` |
 
-### `invalid_client` — 401
+### `invalid_grant` in detail
 
-The `client_id` or `client_secret` is invalid or doesn't match. Verify in the Developer Portal →
-your project → Credentials. Also returned by `POST /refresh` when you send only a `refresh_token`
-without client credentials.
+The most common causes, in order:
 
-```json
-{ "success": false, "error": { "code": "invalid_client", "message": "client_id/client_secret invalid" } }
-```
+1. The code was already exchanged — they are **single-use**.
+2. More time passed than the code's short lifetime.
+3. The `redirect_uri` at the token endpoint differs from the one used at authorize.
+4. A **rotated-away refresh token was replayed** — which also revokes the user's entire
+   refresh-token family for your client. The user simply signs in again.
 
-### `invalid_token` — 401
+### State mismatch on every login
 
-The access token is invalid, malformed, or expired (TPSSO access tokens last 15 minutes). Use
-`/refresh`, or re-authenticate the user.
+Not an API error — a code bug. Either you are comparing against something other than the value you
+stored, or you are using the deprecated `verifyLoginSession()` no-op. See
+[`oidc-session-security.md`](oidc-session-security.md).
 
-### `insufficient_scope` — 403
+### ID token validation failures
 
-The token lacks the required scope. Add it to the authorization URL and re-authenticate — **and
-make sure the scope is enabled for your project in the portal**, or authorization will fail before
-the consent screen renders.
-
-### `invalid_grant` — 400
-
-The authorization code or refresh token is invalid, expired, already used, or the `redirect_uri`
-doesn't match the registered value. Authorization codes are single-use and short-lived — exchange
-them the instant the callback fires. For a refresh token, note that **rotation revokes the previous
-token**, and replaying a rotated-away token revokes every refresh token for that user and client.
-
-### `invalid_request` — 400
-
-Missing required parameters or invalid values. e.g. `"Missing required parameter: code"`.
-
-### `access_denied` — 403
-
-The user declined on the consent screen. Not a bug — prompt them again or explain why the
-permissions are needed.
-
-### Invalid login session — SDK / app level
-
-`valyd.verifyLoginSession(marker)` returned `{ valid: false }`. It never throws. Causes:
-
-- the login session expired (10-minute TTL)
-- the marker cookie is missing
-- the marker was tampered with
-- you are verifying with a different `clientSecret` than the one that created the session
-
-Fix: send the user back through `/login` for a fresh session. Store the marker server-side
-(httpOnly cookie or session) so it survives the redirect round-trip. **Do not** fall back to
-comparing the callback `state` — that is Valyd's session id, not your CSRF token.
-
-### OIDC-specific
-
-| Error | Cause | Fix |
-|---|---|---|
-| Invalid `redirect_uri` | Doesn't match the registration | Match exactly — no trailing slash, correct protocol |
-| Invalid client credentials | Wrong id/secret | Re-check in the portal; regenerate if lost |
-| User mapping failed | Expected claims missing | Include `profile` and `email` in the scopes |
-| ID token validation failed | Signature or expiry | Sync server time; confirm the JWKS endpoint is reachable |
-| Discovery endpoint failed | Can't reach `.well-known` | Check connectivity/firewall to `idp.valyd.work` |
+| Symptom | Cause |
+| --- | --- |
+| Signature invalid | Wrong JWKS, or an algorithm other than RS256 — **never accept `alg: "none"`** |
+| `aud` mismatch | Must equal your `client_id` |
+| `nonce` mismatch | Must equal the value you sent at authorize — this is your replay protection |
+| Expired | Clock skew; sync server time |
 
 ---
 
-## Verification APIs
+## Verification API
 
 | HTTP | Code | When |
-|---|---|---|
+| --- | --- | --- |
 | 400 | `validation_error` | Malformed body or missing required field |
-| 401 | `invalid_api_key` | Missing/invalid `X-API-Key` header |
+| 401 | `invalid_api_key` | Missing/invalid `X-API-Key` — or a key from another environment |
 | 404 | `not_found` | Session or resource does not exist |
-| 409 | `already_decided` | Manual override on a session that is already terminal |
+| 409 | `already_decided` | Manual override on an already-terminal session |
 | 409 | `idempotency_in_progress` | A request with this `Idempotency-Key` is still in flight |
-| 422 | `unprocessable` | Could not process the input, e.g. an unreadable image |
+| 422 | `unprocessable` | Could not process the input |
 | 422 | `idempotency_key_reused` | Same `Idempotency-Key`, different request body |
-| 429 | `rate_limited` | Public/demo rate limit exceeded |
+| 429 | `rate_limited` | Rate limit exceeded |
 | 500 | `internal_error` | Unexpected server error — safe to retry |
 
 ```text
-400 validation_error  -> fix the request body / add the missing field, then retry.
-401 invalid_api_key   -> set X-API-Key to a valid App API key. Do NOT retry until fixed.
-404 not_found         -> verify the session/resource id. Do NOT retry the same id.
-409 already_decided   -> the session is terminal; overrides only work before that.
-409 idempotency_in_progress -> retry shortly.
-422 unprocessable     -> input unusable (e.g. blurry image); collect new input and retry.
-422 idempotency_key_reused  -> you reused a key with a different body; use a fresh key.
-429 rate_limited      -> back off and retry later.
-500 internal_error    -> safe to retry with backoff.
+400 validation_error       -> fix the request body, then retry.
+401 invalid_api_key        -> set X-API-Key to a valid App API key FOR THIS ENVIRONMENT.
+                              Do NOT retry until fixed.
+404 not_found              -> verify the session id. Do NOT retry the same id.
+409 already_decided        -> the session is terminal; overrides only work before that.
+409 idempotency_in_progress-> retry shortly.
+422 unprocessable          -> the input was unusable; collect new input and retry.
+422 idempotency_key_reused -> you reused a key with a different body; use a fresh key.
+429 rate_limited           -> back off and retry later.
+500 internal_error         -> safe to retry with backoff.
 ```
 
-Authenticated endpoints are **billed per call** against your App. Public/demo endpoints return 429
-when limits are exceeded.
+Authenticated endpoints are **billed per call** against your app's wallet — which is exactly why
+`idempotencyKey` matters on retries.
 
-### Credential (license) decline codes
+### Check-level failures
 
-These arrive on a **successful** HTTP call, as `check.error.code` with `check.status === "failed"`:
+These arrive on a **successful** HTTP call, as `check.error.code` with `check.status === "failed"`.
+
+Credential (license) declines:
 
 | Code | Meaning |
-|---|---|
+| --- | --- |
 | `license_not_found` | No license matching that number + state + type |
-| `license_expired` | Found, but past its expiry date |
+| `license_expired` | Found, past its expiry date |
 | `license_inactive` | Exists but suspended, revoked, or lapsed |
 | `name_mismatch` | Valid license, registered to a different person |
-| `board_unavailable` | The licensing board's system was unreachable — retry in a few minutes |
+| `board_unavailable` | The licensing board was unreachable — retry in a few minutes |
+
+Anti-spoof failure `signal` values: `no_face`, `face_unreadable`, `spoof_detected`,
+`low_confidence`, `duplicate_frames`, `static_capture`, `discontinuous_motion`, `different_faces`.
 
 **Never surface these codes or raw check data to the end user.** Map them to your own message.
 
@@ -135,24 +100,27 @@ These arrive on a **successful** HTTP call, as `check.error.code` with `check.st
 ## SDK errors (`ValydVerifyError`)
 
 | Code | Meaning | Fix |
-|---|---|---|
+| --- | --- | --- |
 | `config_error` | Missing `apiKey` / `webhookSecret` | Pass them to the constructor |
 | `network_error` | DNS / socket failure | Retry with backoff |
-| `timeout` | Exceeded `timeoutMs` (default 15 s) | `timeoutMs: 90_000` for credential lookups |
+| `timeout` | Exceeded `timeoutMs` (default 15 s) | Raise it; credential registry lookups take 10–60 s |
 | `invalid_signature` | Webhook HMAC mismatch or stale timestamp | Use the raw body; check the secret; return 400 |
-| `API_KEY_INVALID` | API-side rejection of the key | Rotate / refetch the key |
+| `API_KEY_INVALID` | API-side rejection of the key | Rotate / refetch; confirm the environment |
 | `VALIDATION_ERROR` | API-side request validation | Fix the payload |
+
+**A method that no longer exists** is not an error code but is the most common SDK surprise — see
+the removals table in [`sdk.md`](sdk.md).
 
 ---
 
-## The five most common integration failures
+## The failures that actually happen
 
-1. **Comparing the callback `state` for CSRF.** Always fails — Valyd doesn't echo it. Use
-   `verifyLoginSession(marker)`.
-2. **Webhook signature never matches.** The body was parsed and re-serialized. HMAC the raw bytes.
-3. **Credential lookup times out.** Default client timeout is shorter than the 10–60 s the registry
-   takes. Set ≥90 s.
-4. **`redirect_url` mismatch.** Usually a trailing slash. Match the portal registration character
-   for character.
-5. **Gating access on `?status=` from the redirect.** It's a user-editable hint. Read
-   `sessions.decision(id)`.
+1. **A CSRF check that does nothing.** `verifyLoginSession()` is a no-op; it returns and your check
+   passes for everyone. Replace with a `state` comparison.
+2. **`410 Gone`.** You're on the legacy TPSSO namespace.
+3. **Calling a per-check endpoint that isn't public any more.** Run it as a workflow check.
+4. **Webhook signature never matches.** The body was parsed and re-serialized. HMAC the raw bytes.
+5. **Gating access on `?status=`.** It's a user-editable hint. Read `sessions.decision(id)`.
+6. **Mixing environments.** A dev key against a production host, or vice versa. Both 401.
+7. **Losing a rotated refresh token.** Persist the new value atomically or the next refresh trips
+   theft detection.

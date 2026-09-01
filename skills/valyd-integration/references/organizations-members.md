@@ -36,7 +36,7 @@ Authenticated with your app's `client_id` + `client_secret` — headers `X-Clien
 only.**
 
 | Operation | SDK | REST |
-|---|---|---|
+| --- | --- | --- |
 | List members (status + `valyd_id`) | `client.getMembers()` | `GET /api/sdk/members` |
 | Add a member (emails a face-activation link) | `client.addMembers([{ email, firstName, lastName }])` | `POST /api/sdk/members` |
 | Add many (bulk, up to 500; dupes → `skipped`) | `client.addMembers([ ...up to 500 ])` | `POST /api/sdk/members` |
@@ -86,7 +86,7 @@ curl -X POST https://dev.valyd.work/api/sdk/members \
 ## Member lifecycle
 
 | Status | Meaning |
-|---|---|
+| --- | --- |
 | `invited` | created, no email sent yet (the `notify:false` path) |
 | `link_sent` | activation email sent, awaiting the person |
 | `active` | face-activated and bound to a Valyd identity — **the only billable state** |
@@ -128,7 +128,7 @@ reading billing **are** a real API.
 ## Notes for integrators
 
 - Organizations **do not change the login or verification API surface**. Your app still uses the
-  same OAuth `client_id`/`client_secret` for Login with Valyd and the same App API key for the
+  same OAuth `client_id`/`client_secret` for Connect with Valyd and the same App API key for the
   Verification APIs. An organization governs *who owns the app*, *who may log into it*, and gives
   you the Members API for workforce onboarding.
 - For a **private** org app, a user who is not an assigned member is **refused at the OAuth authorize

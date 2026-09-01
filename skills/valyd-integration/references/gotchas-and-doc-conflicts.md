@@ -1,181 +1,166 @@
-# Gotchas and places the docs contradict themselves
+# Stale patterns, removals & doc conflicts
 
-Real contradictions found across the published Valyd docs, plus surprising-but-consistent behaviour.
-When one of these matters, **read the actual API response** (or the OpenAPI spec) rather than
-trusting either page. Do not silently "fix" a working integration to match a doc page.
+Two kinds of hazard: **things that changed** (older code and older docs are now wrong), and
+**things the published docs still disagree about**. When one matters, read the actual API response
+or the OpenAPI spec rather than trusting any page.
 
-Specs: `https://docs.valyd.work/openapi/valyd-id.json` · `https://docs.valyd.work/openapi/valyd-verify.json`
-
----
-
-## Contradictions
-
-### 1. Authorization code TTL: 2 minutes or 5?
-
-- `docs/endpoints` and the raw-HTTP section of `docs/authentication`: **~2 minutes**.
-- The step-by-step flow in `docs/authentication`, and `docs/errors` under `invalid_grant`:
-  **5 minutes**.
-
-**Do:** exchange the code the instant your callback fires. Then it never matters. Never design a
-flow that parks a code for later.
-
-### 2. Token response nesting differs between `/token` and `/refresh`
-
-- `POST /token` → `data.access_token`
-- `POST /refresh` → `data.tokens.access_token`
-
-Not a doc bug — the two endpoints genuinely differ. Code for each specifically.
-
-### 3. Credential-verification response shape
-
-- `verifications/standalone` (Core APIs): the standard envelope —
-  `{ success, data: { session_id, status: "passed", check: { type, status, score, data } } }`.
-- `verify/verify-license` (the recipe page): a flat object —
-  `{ verification_id, status: "APPROVED", checks: [ { type, status, data, error } ] }`.
-
-These are incompatible. The Core APIs page is the reference for the endpoint; the recipe may be
-describing an older or a wrapper shape. **Log the actual response once and code to what you get.**
-
-### 4. Credential discovery response fields
-
-- `verifications/standalone`:
-  `states: [{ state_name, state_code }]`, `providers: [{ provider_code, provider_display_name, credential_name, required_fields }]`
-- `verify/verify-license`:
-  `states: [{ state, name, provider_count }]`, `providers: [{ provider_id, name, license_types }]`
-
-Same disagreement. Read the response.
-
-### 5. SDK `credentials.states()` return type
-
-`verifications/sdk` types it as `Promise<CredentialState[]>` but every example destructures
-`const { states } = await verify.credentials.states()`. **Follow the examples** — that's the usage
-the docs actually exercise.
-
-### 6. Manual session override — which path?
-
-- `verifications/api-reference`: `PATCH /api/v2/session/{id}/status`
-- `verifications/hosted`: "POST/PATCH `/api/v2/session/{id}`", explicitly marked as *inferred from
-  the SDK method names*.
-
-**Use `PATCH /api/v2/session/{id}/status`** — it's the spelled-out one. Or just call
-`verify.sessions.updateStatus(id, "APPROVED")`.
-
-### 7. Are workflows creatable over the API?
-
-- `verifications/api-reference`: "There is no REST endpoint to create a workflow… workflows are
-  defined in the Developer Portal."
-- `verifications/hosted` and `verifications/sdk`: document `verify.workflows.create/list/retrieve/
-  update/remove` mapped to `/api/v2/workflows`.
-
-**Try the SDK; fall back to the portal if it 404s.** Either way you end up with a `workflow_id`.
-
-### 8. Webhook event type `verification.completed`
-
-`evv.mdx` shows `"type": "verification.completed"`, which is **not** in the canonical list
-(`verification.approved` / `.declined` / `.in_review` / `.abandoned` / `.expired`). Per the
-versioning policy new event types can be added at any time — so **handle unknown types gracefully**
-rather than trusting either list exhaustively.
-
-### 9. Webhook `decision` field: string or object?
-
-- `verifications/webhooks`: `"decision": "approved"` — a lowercase string.
-- `verifications/hosted`: `"decision": { /* same shape as the decision API */ }` — an object.
-
-Doesn't matter if you follow the rule: **the webhook is a notification; read the real result from
-`GET /api/v2/session/{id}/decision`.**
-
-### 10. `GET /licenses` scope
-
-`docs/endpoints` says "Bearer access token required (no specific scope declared on this endpoint in
-the source)", while `docs/scopes` associates license data with `doctor_license`. If you get a 403,
-request `doctor_license`.
-
-### 11. Access token lifetime: TPSSO vs OIDC
-
-- TPSSO: `expires_in: 900` — **15 minutes**.
-- OIDC: ID token 15 min, **access token 1 hour**, refresh token 30 days.
-
-Different products, genuinely different lifetimes. Don't apply one to the other.
+Specs: `https://docs.valyd.work/openapi/valyd-id.json` ·
+`https://docs.valyd.work/openapi/valyd-verify.json`
 
 ---
 
-## Surprising but consistent
+## Part 1 — Breaking changes you will meet in existing code
 
-### The `state` parameter is not echoed
+### The `state` CSRF rule reversed (2026-08-18)
 
-The single biggest trap. See `login-sessions-csrf.md`.
+Valyd's old TPSSO flow did **not** echo `state`; it substituted its own opaque session id, and the
+documented workaround was a login-session "marker". **That is now backwards.** The IdP echoes
+`state` unchanged and the standard comparison is the required CSRF check.
 
-### `redirect_url` vs `redirect_uri`
+**`createLoginSession()` / `verifyLoginSession()` are deprecated no-ops.** They still compile and
+still return, so a CSRF check built on them **silently passes for everyone** — a security bug, not
+a stale API. Delete them. See [`oidc-session-security.md`](oidc-session-security.md).
 
-Authorize takes `redirect_url`. The token body takes `redirect_uri`. Same value, two spellings.
+### Legacy TPSSO endpoints removed — `410 Gone` (2026-08-18)
 
-### OIDC discovery has a non-standard `/api/` prefix
+`POST /api/auth/tpsso/token`, `/refresh`, and `/tpsso/authorize` are **removed**. Use
+`/api/auth/oidc/*`. Policy: removed endpoints return an explicit `410` with a pointer, never a
+silent 404 — so a 410 from Valyd means "you're on the old namespace".
 
-`https://idp.valyd.work/api/.well-known/openid-configuration`, not
-`https://idp.valyd.work/.well-known/openid-configuration`. Some strict OIDC libraries construct the
-standard path from the issuer and will fail — configure the discovery URL explicitly, or enter the
-endpoints manually.
+The old TPSSO base `https://idp.valyd.work/api/auth/tpsso` and the old authorize URL
+`https://idp.valyd.work/auth?...&redirect_url=...` are both gone. The current authorize endpoint is
+`/api/auth/oidc/authorize` and the parameter is `redirect_uri` throughout — the old
+`redirect_url` / `redirect_uri` split no longer exists.
 
-### The SDK defaults to production, but the docs are all development
+### Workflow CRUD removed from the SDK (v1.10.4)
 
-`new Valyd({...})` with no `env` targets `valyd.id`. Every documented host (`idp.valyd.work`,
-`dev.valyd.work`) is **development**. Pass `env: "development"` with dev credentials, or OAuth fails
-with `client_id/redirect_uri not allowed`.
+`verify.workflows.create/list/retrieve/update/remove` are gone. Workflows are composed in the
+Developer Portal; pass the resulting `workflowId` to `sessions.create()`. They return if and when
+the server contract becomes a confirmed public API.
 
-### The Members API is on a different host
+### Direct per-check calls hidden (v1.10.5)
 
-`https://dev.valyd.work/api/sdk/*` — the portal host — not `idp.valyd.work`. And it authenticates
-with `X-Client-Id` / `X-Client-Secret`, not a Bearer token or the API key.
+`verify.standalone.idVerification`, `faceMatch`, `locationMatch`, `ageVerification`, `credential`,
+`kycCredential`, and the `verify.kyc.redirectUrl()` helper are **no longer exposed**. Run these as
+workflow checks in a session. The public surface is now the hosted flow only: `valyd.auth`,
+`verify.sessions.*`, and the Unique Human anti-spoof calls.
 
-### Refresh token rotation is on by default and reuse is punished
+Any `POST /api/v2/<check>` code — `/id-verification`, `/liveness`, `/face-match`,
+`/age-verification`, `/credential-verification`, `/kyc-credential`, `/location` — is calling a
+surface that is no longer a documented public API.
 
-Every refresh returns a new token and revokes the old one. Replaying a rotated-away token revokes
-**every** refresh token for that user and client. Store the replacement atomically.
+### `evvPresence` removed (v1.10.4)
 
-### A single-image anti-spoof score is capped at 85
+`verify.standalone.evvPresence` and the `/evv-presence` endpoint **never existed server-side** —
+it always 404'd. Compose presence from face-match + location checks in one workflow.
 
-`POST /api/v2/antispoof` with one `image` can never exceed `human_score: 85` (`assurance: "upload"`).
-For a real verdict send `frames[]` (burst), or use the hosted flow for `assurance: "captured"`.
+### The integration decision tree is retired
 
-### Liveness is a hard equality, not a threshold
+The Hosted × Core / Account × Non-account 2×2 and the "Choosing an integration" page are retired.
+There are **two products** — [Reusable Verification and the Unique Human API](products.md) — and
+the choice between them is the only one.
 
-`check.status === "passed"` only when `live_score === 1`. `0` is spoof; `< 0` means no face detected.
+### Age check: `verified` → `satisfied` (2026-08-19)
 
-### Location is never advisory
+`bands.*.verified` is a **deprecated alias**. Read `satisfied` — same value, honest name.
 
-A real GPS fix is mandatory. Blocked permission or missing coordinates is a hard `failed` — never a
-pass, never a review. With an expected point **and** `radius_m`, the status **is** the geofence
-verdict.
+---
 
-### Credential lookups need first/last name even when `required_fields` omits it
+## Part 2 — Places the docs still disagree
 
-The registry always needs a name. Collect it regardless of what the provider metadata says.
+### The SDK `env` option vs `VALYD_IDP_URL`
 
-### At-login attribute consent is disabled right now
+`environments.md` in the docs documents per-environment hosts via `VALYD_IDP_URL` (SDK: `baseUrl`).
+The EVV page still shows a `Valyd({ ..., env: "development" })` constructor option, warning that
+without it the SDK defaults to production. Both may work; **prefer `baseUrl` / `VALYD_IDP_URL`**,
+which is the documented mechanism, and be aware the `env` form exists in older code.
 
-The consent screen is login-only. `attr_code` never arrives. Use `requestAttributes` (after login).
+### `/licenses` scope
 
-### `libsodium-wrappers` is not bundled
+The endpoint reference says "Bearer access token required (no specific scope declared on this
+endpoint in the source)", while the scopes page associates license data with `doctor_license`. If
+you get a 403, request `doctor_license`.
 
-The self-custody consent methods lazy-load it. `npm i libsodium-wrappers` or you get
-`No such module libsodium-wrappers` the first time you decrypt.
+### Response envelopes are genuinely inconsistent
 
-### There is no browser SDK
+Not a doc bug — the API really varies:
 
-Hosted verification is a plain redirect to `session.url`. Older EVV snippets reference browser
-helpers like `captureVisit()` / `captureLocation()` / `connectButton()` alongside comments saying no
-browser SDK exists. **Build capture with `navigator.mediaDevices` + `navigator.geolocation`** and
-POST to your own server.
+| Endpoint | Shape |
+| --- | --- |
+| `POST /api/auth/oidc/token` | **standard top-level token JSON, no wrapper** |
+| `GET /api/auth/oidc/userinfo` | **top-level OIDC claims, no wrapper** |
+| `GET /api/auth/oidc/licenses` | `{ success, data }` |
+| `GET /api/auth/oidc/verifications` | `{ success, data }` |
+| Verification API | `{ success, data, error }` |
 
-### Relying parties now get the real legal name
+Read what you get; don't assume a wrapper.
 
-A changelog entry states every relying party receives the user's **real legal name**, not the
-pseudonym — while the Account-mode "proofs only" rule still lists a pseudonym among the returned
-proofs. Don't assume you'll get a pseudonym; don't assume you'll get raw KYC either. Inspect what
-comes back.
+### `verify.credentials.states()` return type
 
-### Public demo credentials exist in the docs
+Typed as `Promise<CredentialState[]>` but every example destructures
+`const { states } = await verify.credentials.states()`. **Follow the examples** — that is the usage
+the docs exercise.
 
-The anti-spoof page publishes a real `client_id` / `client_secret` / app key / `workflow_id` on a
-balance-capped demo account. They're deliberately public and exist for the demo. **Never copy them
-into a real integration**, and never treat them as an example of safe secret handling.
+### Webhook `decision` field: string or object?
+
+The webhooks page shows `"decision": "approved"` (a lowercase string); other material shows an
+object. It doesn't matter if you follow the rule: **the webhook is a notification; read the real
+result from `sessions.decision(id)`.**
+
+### Webhook event types
+
+The canonical list is `verification.approved` / `.declined` / `.in_review` / `.abandoned` /
+`.expired`. The EVV page shows a `verification.completed` that isn't in it. New event types can be
+added at any time — **handle unknown types gracefully** rather than trusting any list exhaustively.
+
+### Older EVV code samples
+
+The EVV page predates the v1.10.4/v1.10.5 removals and still shows
+`verify.standalone.credentialVerification(...)`, `faceMatch(...)`, `locationMatch(...)` and
+`verify.kyc.redirectUrl(...)` as direct calls, plus browser helpers (`captureVisit()`,
+`captureLocation()`, `connectButton()`) alongside comments saying no browser SDK exists. **Treat
+that page's code as illustrative of the EVV *use case*, not of the current API.** The current
+shape is one workflow bundling the checks — see [`recipes.md`](recipes.md).
+
+---
+
+## Part 3 — Surprising but correct
+
+**OIDC discovery has an `/api/` prefix.** `https://idp.valyd.work/api/.well-known/openid-configuration`.
+The standard `/.well-known/…` path also works, but strict libraries that construct the path from
+the issuer may need the URL given explicitly.
+
+**Two hosts, two credential families.** The Members API is on `https://dev.valyd.work/api/sdk/*` —
+the *portal* host — and authenticates with `X-Client-Id` / `X-Client-Secret`, not a Bearer token or
+the App API key.
+
+**Refresh rotation punishes replay.** Every refresh revokes the token you sent. Replaying a
+rotated-away token revokes the user's entire refresh-token family for your client. Persist the
+replacement atomically.
+
+**A single-image anti-spoof score is capped at 85.** For a real verdict use a burst, or the hosted
+capture which yields `assurance: "captured"`.
+
+**Location is never advisory.** A real GPS fix is mandatory; blocked permission is a hard `failed`.
+Where a radius is configured, the status **is** the geofence verdict.
+
+**At-login consent is disabled.** The consent screen is login-only, so `attr_code` never arrives.
+Use the after-login `requestAttributes` flow.
+
+**`libsodium-wrappers` is not bundled.** The self-custody consent methods lazy-load it —
+`npm i libsodium-wrappers`.
+
+**There is no browser SDK.** Verification is a redirect to `session.url`. The only front end is the
+drop-in `signin/client.js` button.
+
+**Testing costs real money.** Checks run for real — no simulated results — and bill against your
+wallet. New accounts get a $100 welcome credit.
+
+**Two things called "session".** A *login session* is three OIDC tokens. A *verification session*
+is one run through a workflow. "Session expired" from a resource API means refresh the access
+token; `EXPIRED` from the decision API means create a new verification session.
+
+**Public demo credentials exist in the docs.** The anti-spoof page publishes a real
+`client_id`/`client_secret`/app key on a balance-capped demo account. They are deliberately public.
+Never copy them into a real integration, and never treat them as an example of safe secret
+handling.

@@ -1,21 +1,33 @@
-# Statuses & decisioning
+# Session lifecycle, statuses & decisions
 
-Two independent dimensions: the **session status** (lifecycle of a whole verification session) and
-the **check status** (result of one check inside it).
+A verification session is one person's single run through a [workflow](workflows.md)'s checks on
+Valyd's verification page. It moves through a small state machine that **always ends in a terminal
+decision**.
 
-## Session status
+## The lifecycle
 
 ```text
-NOT_STARTED --> IN_PROGRESS --> (IN_REVIEW) --> APPROVED | DECLINED
-                                            \-> ABANDONED | EXPIRED
+[*] -> NOT_STARTED          create session
+NOT_STARTED -> IN_PROGRESS  user opens the verification page
+IN_PROGRESS -> IN_REVIEW    needs human / async review
+IN_PROGRESS -> APPROVED | DECLINED | ABANDONED | EXPIRED
+IN_REVIEW   -> APPROVED | DECLINED
 ```
 
-`IN_REVIEW` is optional — a session may go straight from `IN_PROGRESS` to a terminal state, or pass
-through review first.
+1. **Created (`NOT_STARTED`).** Your backend calls `verify.sessions.create` with a `workflowId`.
+   The response carries the verification page `url`, a `sessionToken`, and `expiresAt`. Tag it with
+   `vendorData` and bound its lifetime with `ttlSeconds`.
+2. **In progress (`IN_PROGRESS` → optionally `IN_REVIEW`).** The user completes the workflow's
+   checks. A session needing manual or async review passes through `IN_REVIEW` first; otherwise it
+   goes straight to a terminal state.
+3. **Terminal (`APPROVED` · `DECLINED` · `ABANDONED` · `EXPIRED`).** The lifecycle ends. **Terminal
+   is terminal** — an abandoned or expired session is never resumed; create a new one.
+
+## Session status values
 
 | Status | Meaning |
-|---|---|
-| `NOT_STARTED` | Session created, user not yet on the hosted page |
+| --- | --- |
+| `NOT_STARTED` | Session created, user not yet on the verification page |
 | `IN_PROGRESS` | User is interacting with the flow |
 | `IN_REVIEW` | Awaiting human / async review |
 | `APPROVED` | All checks passed (or manually approved) |
@@ -23,29 +35,38 @@ through review first.
 | `ABANDONED` | User left before completing |
 | `EXPIRED` | TTL elapsed before completion |
 
-**Terminal** (a webhook is sent, the lifecycle ends): `APPROVED`, `DECLINED`, `ABANDONED`, `EXPIRED`.
+**Terminal** (a webhook fires, the lifecycle ends): `APPROVED`, `DECLINED`, `ABANDONED`, `EXPIRED`.
 **Non-terminal** (still in flight): `NOT_STARTED`, `IN_PROGRESS`, `IN_REVIEW`.
 
-### How to act
+## Two signals, one authority
+
+- **The redirect `?status=` is a hint.** The browser returns to your `redirectUrl` with
+  `?session_id=…&status=…`. **Never grant access on that query param** — a user can edit it.
+- **A signed webhook fires on the terminal state** — a notification, not the result.
+- **`verify.sessions.decision(id)` is authoritative** — session status plus the per-check breakdown.
+
+## How to act
 
 ```text
-NOT_STARTED  -> do nothing yet; wait for the user to open the hosted page. Keep the session pending.
-IN_PROGRESS  -> do nothing yet; the user is mid-flow.
-IN_REVIEW    -> do nothing yet; await the outcome. It will move to APPROVED or DECLINED.
-                DO NOT grant access.
-APPROVED     -> fetch GET /api/v2/session/{id}/decision for the full data, then grant access.
-DECLINED     -> fetch the decision to see which checks failed; deny, and offer a retry path
-                if your policy allows.
-ABANDONED    -> treat as not verified; prompt the user to restart (create a NEW session —
-                sessions cannot be resumed).
-EXPIRED      -> treat as not verified; the TTL elapsed. Create a new session if still needed.
-Unsure       -> curl https://idp.valyd.work/api/v2/session/{id} -H "X-API-Key: $VALYD_API_KEY"
+NOT_STARTED / IN_PROGRESS -> wait; the run is not finished. Keep the session pending.
+IN_REVIEW                 -> wait for the outcome; do NOT grant access yet.
+APPROVED                  -> fetch the decision, then grant access / complete onboarding.
+DECLINED                  -> fetch the decision to see which checks failed; deny, and offer a
+                             retry if your policy allows.
+ABANDONED / EXPIRED       -> treat as not verified; create a NEW session if they still need to verify.
 ```
 
-## Check status
+| `d.status` | What to do |
+| --- | --- |
+| `APPROVED` | Grant access. Store the decision against the user. |
+| `DECLINED` | Show a clear message. Inspect `d.checks` for which check failed and why. **Never surface raw error messages or codes to the end user.** |
+| `IN_REVIEW` | Show "we'll be in touch". A terminal webhook arrives when review completes. |
+| `ABANDONED` / `EXPIRED` | Offer to restart — create a new session. |
+
+## Check status values
 
 | Check status | Meaning |
-|---|---|
+| --- | --- |
 | `pending` | not started |
 | `running` | in progress |
 | `passed` | check succeeded |
@@ -58,7 +79,6 @@ failed            -> drives the session toward DECLINED; inspect the decision fo
 review            -> inconclusive; the session typically sits in IN_REVIEW until resolved.
                      Do NOT grant access on this check yet.
 pending / running -> not finished.
-Unsure            -> curl .../session/{id}/decision -H "X-API-Key: $VALYD_API_KEY"
 ```
 
 Relationship:
@@ -67,44 +87,45 @@ Relationship:
 - Any check `failed` → session typically `DECLINED`.
 - Any check `review` and none failed → session typically `IN_REVIEW` until resolved.
 
-## Mapping to product behaviour
+## Reading the decision
 
-| `d.status` | What to do |
-|---|---|
-| `APPROVED` | Grant access. Store the decision against the user. |
-| `DECLINED` | Show a clear message. Inspect `d.checks` for which check failed and why. **Do not surface raw error messages or codes to the end user.** |
-| `IN_REVIEW` | Show "we'll be in touch". A terminal webhook arrives when review completes. |
-| `ABANDONED` / `EXPIRED` | Offer to restart — create a new session. |
+```js
+const d = await verify.sessions.decision(sessionId);
+// d.status  -> "APPROVED" | "DECLINED" | "IN_REVIEW"
+// d.checks  -> [{ type, status, score, data, error }]
+
+const credential = d.checks.find(c => c.type === "credential");
+if (credential?.status === "failed") {
+  console.log(credential.error?.message);   // e.g. "License belongs to a different name"
+}
+```
+
+A decision from a **connected** session also carries `identity` — the reusable proof
+(`valyd_id`, pseudonym, `id_verified`, age bands, licenses, `verified_at`) — and marks steps
+skipped from the account with `reused: true`.
+
+For a KYC + License workflow, `APPROVED` means **all four**: the ID was authentic, the selfie was
+live, the selfie matched the ID portrait, and the license belongs to the person on the ID.
 
 ## Manual override
 
-`PATCH /api/v2/session/{id}/status` with `{ "status": "APPROVED" }` or `"DECLINED"` forces a terminal
-decision — for example when a human reviewer on your side resolves an `IN_REVIEW` session.
+`verify.sessions.updateStatus(id, "APPROVED" | "DECLINED")` forces a terminal decision — for
+example when a human reviewer on your side resolves an `IN_REVIEW` session.
 
-- Valid only while the session is **non-terminal** (`NOT_STARTED`, `IN_PROGRESS`, `IN_REVIEW`).
-- Once terminal it cannot be flipped: `409 already_decided`.
+- Valid **only while non-terminal**. Once terminal it cannot be flipped.
 - Authenticated by the project API key alone — **any holder of that key can override**; there is no
   separate reviewer role.
 - The decision is recorded on the session and delivered to your webhook like any other result.
 
-```json
-{
-  "success": false,
-  "error": {
-    "code": "already_decided",
-    "message": "Session is already in a terminal state.",
-    "status": "APPROVED"
-  }
-}
-```
-
 ## Build defensively
 
-The versioning policy allows **new enum values to be added at any time** — a new `check.status`, a
-new failure `signal`, a new event `type`. Never hard-fail on an unrecognized value: treat it as the
-closest known category (an unknown terminal status as "not approved"). Likewise, ignore unknown
-response fields rather than rejecting the payload.
+New enum values can be added at any time — a new check status, a new failure `signal`, a new event
+`type`. **Never hard-fail on an unrecognized value**: treat it as the closest known category (an
+unknown terminal status as "not approved"). Ignore unknown response fields rather than rejecting
+the payload.
 
-Breaking changes never land on `/api/v2` in place; they ship under `/api/v3`. Pin `/api/v2` in your
-base URL and you are stable until a deprecation is announced, with a **minimum 6-month** migration
-window. Deprecated responses may carry a `Deprecation` header pointing at the replacement.
+## Related
+
+- [`verification-sessions.md`](verification-sessions.md) — creating the session and reading results
+- [`webhooks.md`](webhooks.md) — the signed terminal-state notification
+- [`checks-reference.md`](checks-reference.md) — what each check returns

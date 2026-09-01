@@ -25,20 +25,23 @@ Nothing to invoke — it activates on its own when you mention Valyd. Just ask:
 
 ## What it covers
 
-- **Login with Valyd** — OAuth2 / TPSSO and OIDC
-- **Verification APIs** — KYC, liveness, anti-spoof, face match, age, professional licenses, location
+- **Connect with Valyd** — OpenID Connect sign-in, tokens, sessions
+- **Reusable Verification** — workflow sessions for KYC, liveness, face match, age, licenses, location
+- **Unique Human API** — liveness and face uniqueness, with no user login
 - **`@valyd/sdk`** — every class, method and option
 - **Webhooks** — signatures, retries, deduplication
-- **Members API** — organizations, roles, workforce
+- **Organizations** — roles, workforce, the Members API
 - **MCP** — connecting an agent to Valyd's hosted MCP server
 
-Plus the traps: the `state` parameter that isn't echoed back, the SDK environment default, raw-body
-signature verification, and a dozen more that break integrations on the first try.
+Plus the traps: the CSRF check that silently does nothing, the endpoints that now return `410`, the
+methods removed from the SDK, raw-body signature verification, and a dozen more that break
+integrations on the first try.
 
 ## Good to know
 
-The skill targets Valyd's **development** environment (`idp.valyd.work`). With dev credentials you
-need `env: "development"` — the SDK defaults to production.
+The references target Valyd's **development** environment (`idp.valyd.work`). Production and
+testing mirror it on their own domains with their own credentials — set the host per environment
+via `VALYD_IDP_URL`, and never mix a key from one environment with the host of another.
 
 Credentials always come from a human at [dev.valyd.work](https://dev.valyd.work). No API mints
 them, and the skill tells your agent to ask rather than invent them.

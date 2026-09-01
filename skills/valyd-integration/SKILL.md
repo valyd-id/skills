@@ -1,279 +1,301 @@
 ---
 name: valyd-integration
-description: Integrate Valyd identity — Login with Valyd (OAuth2/TPSSO and OIDC), the Verification APIs (KYC, liveness, anti-spoof, face match, age bands, professional licenses, geolocation), the @valyd/sdk Node package, signed webhooks, the workforce Members API, consent-based attribute release, and the Valyd MCP server. Use whenever a task mentions Valyd, valyd_id, TPSSO, "Login with Valyd", @valyd/sdk, ValydClient, VerifyClient, idp.valyd.work, dev.valyd.work, mcp.valyd.work, workflow_id, X-API-Key verification sessions, vrf_ or whsec_ keys, or verifying a person's identity or license through Valyd.
+description: Integrate Valyd identity — Connect with Valyd (OpenID Connect sign-in), Reusable Verification (workflow sessions for KYC, liveness, face match, age, professional licenses, location), the Unique Human API (liveness and face uniqueness with no user login), the @valyd/sdk Node package, signed webhooks, the Organization Members API, consent-based attribute release, and the Valyd MCP server. Use whenever a task mentions Valyd, valyd_id, "Connect with Valyd", @valyd/sdk, ValydClient, VerifyClient, idp.valyd.work, dev.valyd.work, mcp.valyd.work, workflowId, verification sessions, vrf_ or whsec_ keys, or verifying a person's identity or license through Valyd.
 ---
 
 # Valyd integration
 
-Valyd is one identity platform with three surfaces, all issued from **one app** in **one console**:
+Valyd is an identity platform with **two products** and one npm package, `@valyd/sdk`.
 
-| Surface | What it does | Credential |
-|---|---|---|
-| **Login with Valyd** (TPSSO / OIDC) | Users sign in with an already-verified Valyd account | `client_id` + `client_secret` |
-| **Verification APIs** | KYC, liveness, anti-spoof, face match, age, license, location | App API key (`vrf_…`) |
-| **MCP server** | Agents ask a human to approve by face; run web tasks | User OAuth 2.1 token, scope `mcp` |
+| Product | What it answers | Auth | Result |
+| --- | --- | --- | --- |
+| **Reusable Verification** | Who is this person, and what have they already proven? | `client_id`/`client_secret` for sign-in + App API key for checks | Proofs saved to the user's Valyd ID and reused |
+| **Unique Human API** | Is this a live, unique human? | App API key only, no user login | Returned to you; nothing saved to an account |
 
-One npm package covers the first two: `@valyd/sdk` — `valyd.auth.*` for login, `valyd.verify.*` for verification.
+**Connect with Valyd** is the OIDC sign-in that starts Reusable Verification. It can double as your
+app's login button.
 
 ---
 
 ## Read this before writing any code
 
-These eleven facts cause almost every Valyd integration bug. Internalise them; the reference files assume you know them.
+Twelve facts that cause almost every Valyd bug. The reference files assume you know them.
 
-### 1. The `state` parameter is NOT echoed back — standard OAuth CSRF is broken here
+### 1. Pick the product first — there is no decision tree beyond this
 
-Valyd replaces your `state` with **its own opaque session id** on the callback. `sentState === callbackState` is always false. Comparing them rejects every legitimate login.
+```text
+Do you need to know only whether someone is a live, unique human,
+with no account and nothing stored?
+  YES -> Unique Human API   (App API key + a liveness/uniqueness workflow)
+  NO  -> Reusable Verification (Connect the user, read their proofs, run a workflow for what's missing)
+```
 
-Use login sessions instead:
+The old Hosted-vs-Core / Account-vs-Non-account 2×2 is **retired**. If you find it in older
+material, ignore it.
+
+### 2. Every check runs inside a workflow session — there are no per-check REST calls
+
+ID/KYC, face match, liveness, age, professional license and location run **only** as checks inside
+a workflow session. There is no `POST /api/v2/id-verification`, no `verify.standalone.faceMatch()`
+in the public surface, and you never upload images from your backend. The one flow is always:
+
+```js
+const session = await verify.sessions.create({ workflowId, /* ... */ });
+// redirect the person to session.url — Valyd runs the camera, capture, retries
+const decision = await verify.sessions.decision(session.sessionId);
+```
+
+The SDK's remaining `verify.standalone.*` methods are compatibility leftovers and **not part of the
+public products** — the only supported ones are the Unique Human anti-spoof calls.
+
+### 3. Workflows are built in the portal — the SDK has no workflow CRUD
+
+`verify.workflows.*` was removed. Compose checks in the Developer Portal → Workflows, copy the
+`workflowId`, and pass it to `sessions.create()`. A session runs the workflow as it was when the
+session was created.
+
+### 4. `state` IS echoed back — compare it. This reversed in August 2026.
+
+Connect with Valyd is now **standard OIDC**. The IdP echoes your `state` unchanged, and comparing
+it is the correct, required CSRF check.
+
+**`createLoginSession()` and `verifyLoginSession()` are deprecated no-ops.** They still compile.
+A CSRF check built on them silently passes for everyone — that is a security bug, not a stale API.
+Delete any code using them.
 
 ```js
 // on /login
-const session = await valyd.createLoginSession();      // { authorizeState, marker }
-res.cookie("valyd_login", session.marker, { httpOnly: true, maxAge: 600_000 });
-res.redirect(valyd.getAuthorizationUrl({ state: session.authorizeState, scope: [...] }));
+const transaction = valyd.auth.createAuthorizationRequest({ scope: ["profile", "verifications"] });
+req.session.valydOidc = transaction;        // server-side; holds state, nonce, PKCE verifier
+res.redirect(transaction.url);
 
-// on /callback — BEFORE exchangeCode
-const { valid } = await valyd.verifyLoginSession(req.cookies.valyd_login);
-if (!valid) return res.status(400).send("Invalid login session");
+// on /callback
+const transaction = req.session.valydOidc;
+delete req.session.valydOidc;               // consume once
+if (!transaction) return res.status(400).send("Login expired");
+const result = await valyd.auth.handleCallback(req.originalUrl, { transaction });
 ```
 
-Marker TTL is **10 minutes**, it is HMAC-signed, it must be stored server-side only, and `verifyLoginSession` returns `{ valid: boolean }` and never throws. Full detail: `references/login-sessions-csrf.md`.
+`handleCallback()` compares state, sends the PKCE verifier, exchanges the code, verifies the ID
+token (RS256/JWKS, issuer, audience, expiry, nonce), and fetches UserInfo — all in one call.
 
-### 2. Credentials can never be created by an API — a human must use the portal
+### 5. The legacy TPSSO endpoints are gone — `410 Gone`
 
-Signing up, creating an app, copying the `client_secret`, creating the API key, creating a workflow, setting the webhook URL: all human browser steps at `https://dev.valyd.work`. There is **no** password login (magic link or face only) and **no** CI-automatable portal sign-in.
+`/api/auth/tpsso/token`, `/refresh` and `/tpsso/authorize` were **removed** on 2026-08-18. Every
+endpoint now lives under `/api/auth/oidc/*`. Removed endpoints return an explicit `410` with a
+pointer, never a silent 404.
 
-**So: when an integration needs credentials you don't have, stop and ask the human for them.** Do not invent them, and do not go looking for an endpoint that mints them.
+### 6. Three tokens, three jobs — never cross them
 
-`client_secret`, the API key (`vrf_…`) and the webhook secret (`whsec_…`) are each shown **once**. If lost, rotate.
+| Token | Lifetime | Job |
+| --- | --- | --- |
+| **Access token** | ~15 min (`expires_in` ≈ 900) | Call Valyd APIs as the user |
+| **ID token** | validated once at login | Prove *who* logged in, to *your* backend |
+| **Refresh token** | 30 days, rotates every use | Mint new access tokens |
 
-### 3. The SDK defaults to PRODUCTION, but every URL in the docs is DEVELOPMENT
+**Never send the ID token to an API** — an ID token accepted as an API credential is a security
+bug. Treat the access token as **opaque**; don't parse it. The refresh token is an opaque
+`rfrsh_…` string, not a JWT.
 
-`new Valyd({ ... })` with no `env` targets production (`valyd.id`). Every host documented here and in the references — `idp.valyd.work`, `dev.valyd.work` — is the **development** environment. Against dev credentials, omitting `env` fails with `client_id/redirect_uri not allowed`.
+### 7. Refresh rotation is on, and replay is treated as theft
+
+Every refresh revokes the token you sent and returns a new one — **persist the new value every
+time, atomically**. Replaying a rotated-away token revokes the user's entire refresh-token family
+for your client.
+
+### 8. Credentials are human-only and environment-scoped
+
+No API mints a `client_id`, `client_secret`, App API key, or `workflowId` — a person creates them
+at `https://dev.valyd.work`. **Ask the human rather than inventing them.**
+
+These docs describe the **development** environment (`*.valyd.work`). Production and testing mirror
+the layout on their own domains with their **own credentials**. Never mix a key from one
+environment with the host of another. Set the host per environment via `VALYD_IDP_URL` (or the
+SDK's `baseUrl`).
+
+### 9. Verify the webhook HMAC over the RAW body, and deduplicate
+
+Signature = `HMAC_SHA256("{timestamp}.{rawBody}", webhookSecret)`, lowercase hex, header
+`X-Valyd-Signature`. If your framework parses and re-serialises the JSON the bytes differ and
+verification fails every time. Mount with `express.raw({ type: "application/json" })`, reject
+timestamps older than **5 minutes**, compare in constant time, and **dedupe on `X-Valyd-Event-Id`**
+— delivery is at-least-once (up to 10 retries over ~2.5 h; manual resends reuse the id).
+
+### 10. The webhook is a notification; `?status=` is a hint. The decision call is authority.
+
+Always read `verify.sessions.decision(id)` for the real outcome and per-check breakdown. Never gate
+access on the `?status=` query param on your redirect URL — a user can edit it.
+
+### 11. You get proofs, not PII
+
+Reusable Verification returns a pseudonym, `id_verified`, license badges and age bands. Documents,
+DOB and face data stay encrypted with Valyd. Raw attributes are released **only** through the
+consent flow, sealed end-to-end to your X25519 key.
+
+**The at-login consent path is currently disabled** — the consent screen is login-only, so
+`attr_code` never arrives. Use the after-login `requestAttributes` flow.
+
+Biometrics are **irreversible vectors, never images**. Valyd does not store or return face images,
+and the template is never exposed through any API.
+
+### 12. Read before you verify
+
+The habit that makes Valyd cheap: check what the account already holds (free, instant) and only run
+a workflow for what's missing.
 
 ```js
-new Valyd({ clientId, clientSecret, apiKey, webhookSecret, env: "development" })
+const proofs = await valyd.auth.getVerifications(accessToken);
+if (proofs.id_verified) { /* done — no check, no cost */ }
 ```
 
-One `env` switch sets IdP + Verify + KYC. `ValydClient` / `VerifyClient` take `baseUrl` instead (`VerifyClient` defaults to `https://idp.valyd.work`).
-
-### 4. `redirect_url` on authorize, `redirect_uri` on token
-
-The authorize URL takes **`redirect_url`**. The `POST /token` body takes **`redirect_uri`**. Different spellings, same value — and it must match the portal registration **character for character, with no trailing slash**.
-
-### 5. Verify the webhook HMAC over the RAW body, or it never matches
-
-Signature = `HMAC_SHA256("{timestamp}.{rawBody}", webhookSecret)`, lowercase hex, header `X-Valyd-Signature`. If your framework parses and re-serialises the JSON, the bytes differ and verification always fails. Mount with `express.raw({ type: "application/json" })`.
-
-Also: reject timestamps older than **5 minutes**, compare in constant time, and **deduplicate on `X-Valyd-Event-Id`** — delivery is at-least-once (up to 10 retries over ~2.5 hours, and manual resends reuse the same id).
-
-### 6. The webhook is a notification, not the result
-
-Always call `GET /api/v2/session/{id}/decision` for the real outcome and per-check data. Equally: the `?status=` query param on your redirect-back URL is a **UX hint only** — a user can edit it. Never gate access on it.
-
-### 7. Account mode returns proofs; Non-account mode returns raw data
-
-- **Account (Managed by Valyd)** — you pass the user's `valyd_access_token`. Results are **proofs only**: pseudonym, `id_verified`, license badges, age bands. **Never** raw KYC.
-- **Non-account (Fresh)** — no token. You did the capture, nothing is retained, and you get the **raw** extracted data (`fields`, `dob`, portrait, OCR).
-
-Raw account attributes are released **only** through the consent API, sealed to your X25519 key.
-
-### 8. At-login attribute consent is currently DISABLED
-
-The consent screen is login-only right now, so `attr_code` never arrives on the callback. Use the **after-login** path — `requestAttributes` → the user approves in their Valyd app → poll `getAttributeResult`. Anything you read about `attributes` on the authorize URL is retained for when it is re-enabled; do not build on it today.
-
-### 9. Two different auth headers — do not cross them
-
-| Calling | Header |
-|---|---|
-| `/api/v2/*` (Verification) | `X-API-Key: <App API key>` (or `Authorization: Bearer <apiKey>`) |
-| `/api/auth/tpsso/userinfo`, `/licenses`, `/verifications` | `Authorization: Bearer <user access_token>` |
-| `/api/sdk/*` (Members, on **dev.valyd.work**) | `X-Client-Id` + `X-Client-Secret` |
-| `POST /token`, `POST /refresh` | credentials **in the JSON body** |
-
-The webhook secret is never an outbound auth credential — it only verifies incoming signatures.
-
-### 10. Credential (license) lookups take 10–60 seconds
-
-Set the HTTP timeout to **at least 90 s** (`timeoutMs: 90_000`, `--max-time 90`). The SDK's default is 15 s; it auto-raises to ≥60 s for `credentialVerification` / `kycCredential`, but raw `fetch` and `curl` do not.
-
-### 11. Everything is server-side
-
-`client_secret`, the App API key, the webhook secret, the login marker, and the X25519 secret key all stay on your server. There is **no browser SDK** — the hosted flow is a plain redirect to `session.url`. The only things that reach the browser are that URL and the `session_token`.
-
----
-
-## The 2×2: pick the integration shape first
-
-Two independent axes. Decide both before writing code.
-
-|  | **Hosted** (Valyd renders capture) | **Core APIs** (you build the UI) |
-|---|---|---|
-| **Account** (Managed by Valyd) | Login with Valyd → workflow on the hosted page. Steps stored on the account; reuse skips completed steps. **Proofs only.** | REST with the user's token — license badge, face vs stored vector, reuse read. KYC redirects to Valyd. **Proofs only.** |
-| **Non-account** (Fresh) | One-shot hosted capture, nothing retained. **Raw data.** | Per-endpoint REST capture in your own UI. **Raw data.** |
-
-```text
-Does a human need to take a live selfie / photograph an ID in a browser,
-and you don't want to build that camera UI?
-  YES -> Hosted     (create a session, redirect to session.url, read the decision)
-  NO  -> Core APIs  (POST the images/fields yourself, synchronous JSON back)
-
-Should the verification be stored and reused on later visits/logins?
-  YES -> Account      (log the user in first; pass valyd_access_token)
-  NO  -> Non-account  (no token)
-```
-
-Backoffice, batch, or fully custom UX → Core APIs. Returning-user flows where re-doing KYC is wasteful → Account.
+Everything is server-side: `client_secret`, the App API key, the webhook secret, the OIDC
+transaction and the X25519 secret key. There is **no browser SDK** — the flow is a redirect to
+`session.url`. The only front end is the drop-in button.
 
 ---
 
 ## Hosts and base URLs
 
 | Host | Purpose |
-|---|---|
-| `https://idp.valyd.work` | Everything at runtime: TPSSO, OIDC, and all `/api/v2/*` verification |
-| `https://dev.valyd.work` | Developer Portal (human) **and** the Members API (`/api/sdk/*`) |
+| --- | --- |
+| `https://idp.valyd.work` | The API — OIDC sign-in, the Account API, and verification |
+| `https://dev.valyd.work` | Developer Portal (human) **and** the Organization Members API (`/api/sdk/*`) |
 | `https://mcp.valyd.work` | MCP server (`/verification/mcp`) |
-| `https://docs.valyd.work` | Docs, `llms.txt`, OpenAPI specs |
+| `https://docs.valyd.work` | Docs, API Playground, `llms.txt`, OpenAPI specs |
 
-Paths on `idp.valyd.work`:
+One API namespace: authorize, token, JWKS, UserInfo, licenses and verifications all sit under
+`https://idp.valyd.work/api/auth/oidc`. Discovery is at `/.well-known/openid-configuration` (the
+`/api/.well-known/…` alias also works).
 
-- Authorize (TPSSO): `/auth`
-- TPSSO API: `/api/auth/tpsso/{token,refresh,userinfo,licenses,verifications}`
-- OIDC discovery: `/api/.well-known/openid-configuration` — note the **non-standard `/api/` prefix**
-- OIDC: `/api/auth/oidc/{authorize,token,userinfo,jwks.json}`
-- Verification: `/api/v2/…`
-- Consent: `/api/auth/attribute-request`
+**Response envelopes differ by endpoint.** The OIDC token endpoint returns **standard top-level
+token JSON with no wrapper**. `/userinfo` returns top-level claims. `/licenses` and
+`/verifications` use `{ success, data }`. Read what you get; don't assume.
 
-**Response envelope** — every REST response, both products:
-
-```json
-{ "success": true, "data": {}, "error": { "code": "string", "message": "string" } }
-```
-
-`error` is present only when `success` is `false`. Two exceptions worth remembering: `POST /token` returns tokens at `data.access_token`, but `POST /refresh` nests them at `data.tokens.access_token`.
+Every response carries an **`X-Request-Id`** header — log it, and quote it to support. Never send
+support your keys, tokens, or identity data.
 
 ---
 
 ## Where to look next
 
-Load only the file the task needs. Each one is self-contained.
+Load only the file the task needs. Each is self-contained.
 
 | Task | File |
-|---|---|
-| Get credentials; portal steps; passwordless dev sign-in | `references/portal-and-accounts.md` |
-| Add "Login with Valyd"; authorize URL; token exchange; refresh | `references/login-oauth.md` |
-| The CSRF mechanism in depth | `references/login-sessions-csrf.md` |
-| Which scope to request; what each returns; 403s | `references/scopes.md` |
-| The five TPSSO endpoints, request/response shapes | `references/tpsso-endpoints.md` |
-| Enterprise SSO — Mendix, discovery, JWKS, claim mapping | `references/oidc.md` |
-| Get a user's raw legal name / DOB with consent | `references/consent-attributes.md` |
-| Choosing Hosted vs Core, Account vs Non-account; reuse | `references/verify-modes-and-account.md` |
-| Hosted sessions: create → redirect → webhook → decision | `references/verify-hosted.md` |
-| Every `/api/v2/*` check endpoint and its fields | `references/verify-core-apis.md` |
-| Signature verification, retries, dedupe, delivery log | `references/webhooks.md` |
-| Session and check status values, and how to act on each | `references/statuses.md` |
-| `@valyd/sdk` — every class, method, option, type | `references/sdk.md` |
-| Every error code, both products, with fixes | `references/errors.md` |
-| Workforce members, roles, orgs, billing, private apps | `references/organizations-members.md` |
-| Connect an agent over MCP; the three tools | `references/mcp.md` |
-| Worked end-to-end builds (KYC, license, EVV, anti-spoof) | `references/recipes.md` |
-| Places the published docs contradict themselves | `references/gotchas-and-doc-conflicts.md` |
+| --- | --- |
+| Which product, and the mental model | `references/products.md` |
+| Hosts, credential formats, per-environment setup | `references/environments.md` |
+| Get credentials; portal steps; passwordless sign-in | `references/portal-and-accounts.md` |
+| Add Connect with Valyd — button, flow, token exchange | `references/connect-oidc.md` |
+| state / nonce / PKCE, and the deprecated marker pattern | `references/oidc-session-security.md` |
+| Access vs ID vs refresh token; validation; logout | `references/tokens.md` |
+| Reading a connected user's profile, licenses, proofs | `references/account-api.md` |
+| Which scope returns what; 403s | `references/scopes.md` |
+| Getting raw legal name / DOB with consent | `references/consent-attributes.md` |
+| Create a session → redirect → webhook → decision | `references/verification-sessions.md` |
+| Composing workflows in the portal; presets; reuse | `references/workflows.md` |
+| Every check, what it returns, where it's available | `references/checks-reference.md` |
+| Liveness + uniqueness with no user login | `references/unique-human-api.md` |
+| Signatures, retries, dedupe, delivery log | `references/webhooks.md` |
+| Session lifecycle, statuses, acting on each | `references/statuses.md` |
+| `@valyd/sdk` — classes, methods, options, types | `references/sdk.md` |
+| Every error code with fixes | `references/errors.md` |
+| Organizations, roles, workforce, billing | `references/organizations-members.md` |
+| Enterprise SSO with your own OIDC library | `references/oidc.md` |
+| Connecting an agent over MCP | `references/mcp.md` |
+| Worked end-to-end builds | `references/recipes.md` |
+| Stale patterns, removals, and doc conflicts | `references/gotchas-and-doc-conflicts.md` |
 
 ---
 
 ## Minimal working shapes
 
-Three snippets that are correct as written. Expand from the reference files.
+Correct as written. Expand from the reference files.
 
-**Login with Valyd** — `references/login-oauth.md`
+**Connect with Valyd** — `references/connect-oidc.md`
 
 ```js
 import { ValydClient } from "@valyd/sdk";
 const valyd = new ValydClient({
-  clientId: process.env.VALYD_CLIENT_ID,
+  clientId:    process.env.VALYD_CLIENT_ID,
   clientSecret: process.env.VALYD_CLIENT_SECRET,   // server-side only
-  redirectUri: process.env.VALYD_REDIRECT_URI,     // exact portal match, no trailing slash
+  redirectUri: process.env.VALYD_REDIRECT_URI,     // exact registered match, no trailing slash
 });
 
-app.get("/login", async (req, res) => {
-  const s = await valyd.createLoginSession();
-  res.cookie("valyd_login", s.marker, { httpOnly: true, sameSite: "lax", maxAge: 600_000 });
-  res.redirect(valyd.getAuthorizationUrl({ state: s.authorizeState, scope: ["profile", "verifications"] }));
+app.get("/login", (req, res) => {
+  const transaction = valyd.auth.createAuthorizationRequest({
+    scope: ["profile", "verifications"],
+  });
+  req.session.valydOidc = transaction;             // state + nonce + PKCE, server-side
+  res.redirect(transaction.url);
 });
 
-app.get("/callback", async (req, res) => {
-  const { code, error } = valyd.parseCallback(req.url);
-  if (error || !code) return res.status(400).send(error ?? "missing code");
+app.get("/auth/valyd/callback", async (req, res) => {
+  const transaction = req.session.valydOidc;
+  delete req.session.valydOidc;                    // consume once
+  if (!transaction) return res.status(400).send("Login expired");
 
-  const { valid } = await valyd.verifyLoginSession(req.cookies.valyd_login);  // NOT a state compare
-  if (!valid) return res.status(400).send("Invalid login session");
-
-  const tokens = await valyd.exchangeCode(code);      // exchange immediately — the code expires fast
-  const profile = await valyd.getUserInfo(tokens.accessToken);
-  res.clearCookie("valyd_login");
-  // ...set your own session
+  const { user, accessToken } = await valyd.auth.handleCallback(req.originalUrl, { transaction });
+  req.session.user = user;                         // user.valyd_id is your primary key
+  res.redirect("/account");
 });
 ```
 
-**Hosted verification** — `references/verify-hosted.md`
+**Run a verification** — `references/verification-sessions.md`
 
 ```js
 import { VerifyClient, ValydVerifyError } from "@valyd/sdk";
 const verify = new VerifyClient({
-  apiKey: process.env.VALYD_API_KEY,
+  apiKey:        process.env.VALYD_API_KEY,
   webhookSecret: process.env.VALYD_WEBHOOK_SECRET,
 });
 
 const session = await verify.sessions.create({
-  workflowId: process.env.VALYD_WORKFLOW_ID,
-  redirectUrl: `${APP_URL}/verify/callback`,
-  callback: `${APP_URL}/webhooks/valyd`,
-  vendorData: user.id,              // echoed back on the webhook
+  workflowId:       process.env.VALYD_WORKFLOW_ID,
+  valydAccessToken: accessToken,   // omit for the Unique Human API — then nothing is saved
+  redirectUrl:      `${APP_URL}/verify/callback`,
+  callback:         `${APP_URL}/webhooks/valyd`,
+  vendorData:       user.id,       // echoed back on the webhook
+  idempotencyKey:   crypto.randomUUID(),
 });
 res.redirect(session.url);
 
 app.post("/webhooks/valyd", express.raw({ type: "application/json" }), async (req, res) => {
   let event;
   try {
-    event = verify.webhooks.constructEvent(req.body, req.headers);   // raw Buffer, not parsed JSON
+    event = verify.webhooks.constructEvent(req.body, req.headers);   // raw Buffer
   } catch (err) {
     if (err instanceof ValydVerifyError && err.code === "invalid_signature")
       return res.status(400).send("bad signature");
     throw err;
   }
-  if (await alreadyProcessed(event.eventId)) return res.json({ ok: true });   // at-least-once
-  const decision = await verify.sessions.decision(event.sessionId);           // the real result
+  if (await alreadyProcessed(event.eventId)) return res.json({ ok: true });
+  const decision = await verify.sessions.decision(event.sessionId);   // the real result
   await persist(event.vendorData, decision);
   res.json({ ok: true });
 });
 ```
 
-**A single Core check** — `references/verify-core-apis.md`
+**Read before verifying** — `references/account-api.md`
 
 ```js
-const verify = new VerifyClient({ apiKey: process.env.VALYD_API_KEY, timeoutMs: 90_000 });
-
-const { check } = await verify.standalone.credentialVerification({
-  fullName: "Jane Smith",
-  licenseState: "CA",
-  licenseType: "MD",        // the board is resolved for you
-  licenseNumber: "G12345",
-});
-// check.status: "passed" | "failed" | "review"
-// check.data.license.status: "active" | "expired" | ...
+const proofs = await valyd.auth.getVerifications(accessToken);
+if (!proofs.id_verified) {
+  // only now create a session for a workflow containing id_verification
+}
 ```
 
 ---
 
 ## Before you hand the work back
 
-- [ ] Every secret read from env; nothing hard-coded, nothing in browser-reachable code.
-- [ ] The CSRF check is `verifyLoginSession(marker)` — no `state` comparison anywhere.
-- [ ] `redirect_url` / `redirect_uri` matches the portal exactly, no trailing slash.
+- [ ] No `createLoginSession` / `verifyLoginSession` anywhere — they are no-ops.
+- [ ] CSRF is a strict `state` comparison against the stored transaction; nonce is checked too.
+- [ ] No `/api/auth/tpsso/*` calls — that namespace returns 410.
+- [ ] No direct per-check REST calls or `verify.standalone.*` outside Unique Human anti-spoof.
+- [ ] The ID token is validated and never sent to an API.
+- [ ] Each rotated refresh token is persisted atomically.
 - [ ] The webhook route uses the raw body, checks the timestamp, and dedupes on the event id.
-- [ ] The decision comes from `sessions.decision(id)`, never from `?status=`.
-- [ ] Credential-lookup timeouts are ≥90 s.
-- [ ] `env` (or `baseUrl`) matches the environment the credentials came from.
-- [ ] The human has been asked for any credential that requires a portal visit.
+- [ ] The outcome comes from `sessions.decision(id)`, never `?status=`.
+- [ ] Host and credentials come from the same environment.
+- [ ] The account was read for existing proofs before paying for a check.
+- [ ] The human was asked for any credential that requires a portal visit.

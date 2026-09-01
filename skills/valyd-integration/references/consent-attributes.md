@@ -23,7 +23,7 @@ Three groups, with escalating requirements. **Prefer proofs over raw fields** â€
 **Proofs** â€” non-identifying; release on consent alone, no face or vault needed:
 
 | Key | Value |
-|---|---|
+| --- | --- |
 | `id_verified` | boolean â€” the user has completed KYC |
 | `is_16_plus`, `is_18_plus`, `is_21_plus`, `is_30_plus`, `is_65_plus` | boolean age bands, derived, no raw DOB |
 | `preferred_username` | pseudonymous username |
@@ -31,7 +31,7 @@ Three groups, with escalating requirements. **Prefer proofs over raw fields** â€
 **Raw identity** â€” real PII kept server-readable; needs a face-assured (or quick in-page face) session:
 
 | Key | Value |
-|---|---|
+| --- | --- |
 | `legal_name` / `full_name` | full legal name |
 | `first_name`, `last_name` | given / family name |
 | `email`, `phone` | contact |
@@ -43,7 +43,7 @@ if it isn't, the request is refused with an "unlock your vault" prompt. These ar
 dropped:
 
 | Key | Value |
-|---|---|
+| --- | --- |
 | `dob` | date of birth (`YYYY-MM-DD`) |
 | `age` | age in years, derived on-device |
 | `gender` | gender / sex from the ID |

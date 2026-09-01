@@ -11,7 +11,7 @@ terminal state. **The webhook is a notification only** — always call
 ## What you need
 
 | Variable | Where from |
-|---|---|
+| --- | --- |
 | `VALYD_WEBHOOK_SECRET` | Developer Portal → Verify project → Webhooks (`whsec_…`) |
 | `VALYD_API_KEY` | App API key, to fetch the full decision |
 
@@ -23,7 +23,7 @@ session.
 ## Headers
 
 | Header | Meaning |
-|---|---|
+| --- | --- |
 | `X-Valyd-Timestamp` | unix seconds when the request was signed |
 | `X-Valyd-Event-Id` | unique event id — **use it to deduplicate** |
 | `X-Valyd-Signature` | `HMAC_SHA256("{timestamp}.{rawBody}", webhook_signing_secret)`, lowercase hex |
@@ -132,7 +132,7 @@ app.post("/api/valyd-webhook", express.raw({ type: "application/json" }), (req, 
 **Event types:**
 
 | Type | Meaning |
-|---|---|
+| --- | --- |
 | `verification.approved` | terminal, passed |
 | `verification.declined` | terminal, failed |
 | `verification.in_review` | manual/agent review pending — **not terminal** |
@@ -159,7 +159,7 @@ different shapes across pages — treat the decision API as the source of truth 
 Up to **10 attempts**:
 
 | After attempt | Wait before next try |
-|---|---|
+| --- | --- |
 | 1 | 5 seconds |
 | 2 | 30 seconds |
 | 3 | 2 minutes |

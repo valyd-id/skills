@@ -1,25 +1,20 @@
-# OpenID Connect (OIDC)
+# Using your own OIDC library
 
-Valyd implements OIDC on top of OAuth 2.0, for enterprise platforms and any OIDC-compatible app.
+Connect with Valyd is **standard OpenID Connect**, so any OIDC-capable framework or platform works
+— Mendix, Salesforce, Auth0-style modules, `openid-client`, Spring Security, and so on. Point it at
+discovery and it configures itself.
 
-```text
-USE OIDC WHEN                                  USE PLAIN TPSSO/OAUTH WHEN
-- Enterprise platforms (Mendix, Salesforce)    - Custom web/mobile app
-- Your framework requires discovery            - You only need access tokens for API calls
-- You need signed ID tokens (JWT)              - Simpler integration
-- You want automatic endpoint discovery
-```
+If you're writing Node and don't need a specific platform's module, prefer `@valyd/sdk` — see
+[`connect-oidc.md`](connect-oidc.md). It handles state, nonce, PKCE and ID-token validation for you.
 
-The login-session CSRF mechanism is a **TPSSO** concern. A standards-compliant OIDC client library
-handles `state` and `nonce` itself against the OIDC endpoints below.
-
-## Endpoints
-
-**Discovery** — note the **non-standard `/api/` prefix**:
+## Discovery
 
 ```http
 GET https://idp.valyd.work/api/.well-known/openid-configuration
 ```
+
+> Note the **`/api/` prefix**. The standard `/.well-known/openid-configuration` path also works,
+> but a strict library that builds the path from the issuer may need the URL given explicitly.
 
 ```json
 {
@@ -41,10 +36,14 @@ GET https://idp.valyd.work/api/.well-known/openid-configuration
 }
 ```
 
-### Manual configuration (platforms without discovery)
+Logout is advertised as `end_session_endpoint` — `/api/auth/oidc/logout`. See [`tokens.md`](tokens.md).
+
+## Manual configuration
+
+For platforms without auto-discovery:
 
 | Setting | Value |
-|---|---|
+| --- | --- |
 | Issuer | `https://idp.valyd.work` |
 | Authorization | `https://idp.valyd.work/api/auth/oidc/authorize` |
 | Token | `https://idp.valyd.work/api/auth/oidc/token` |
@@ -65,46 +64,47 @@ Unsure
 
 ## Registering the client
 
-Same portal flow as any project (see `portal-and-accounts.md`): create the project, get
-`client_id` + a one-time `client_secret`, register the redirect URI. It must match **exactly** — no
-trailing slash, correct protocol. Example: `https://your-app.mendixcloud.com/oidc/callback`.
+The same portal flow as any app (see [`portal-and-accounts.md`](portal-and-accounts.md)): create
+the app, get `client_id` and a one-time `client_secret`, register your redirect URI. It must match
+**exactly** — no trailing slash, correct protocol.
+
+If you use RP-initiated logout, register your `post_logout_redirect_uri` as an **additional
+redirect URI**.
 
 ## Claim mapping
 
 | Platform field | OIDC claim |
-|---|---|
+| --- | --- |
 | Username | `preferred_username` or `sub` |
 | Email | `email` |
 | Name | `name` |
 | First name | `first_name` |
 | Last name | `last_name` |
 
-Sample `GET /api/auth/oidc/userinfo` response:
-
 ```json
 {
-  "sub": "user_12345",
-  "preferred_username": "john.doe",
-  "email": "john.doe@example.com",
-  "email_verified": true,
+  "sub": "valyd_225c7f2ac450496f97bbbc57354a5898",
+  "valyd_id": "valyd_225c7f2ac450496f97bbbc57354a5898",
+  "preferred_username": "johndoe",
+  "email": "user@example.com",
   "name": "John Doe",
-  "first_name": "John",
-  "last_name": "Doe",
-  "picture": "https://example.com/avatar.jpg"
+  "id_verified": true
 }
 ```
 
+Key the user by **`sub`** — the stable `valyd_…` id. `id_verified` tells you the account passed
+identity verification.
+
 ## Mendix
 
-**Studio Pro** — set the issuer to `https://idp.valyd.work`; endpoints
-`/api/auth/oidc/authorize`, `/api/auth/oidc/token`, `/api/auth/oidc/userinfo`; scopes
-`openid profile email`; enter `client_id` + `client_secret`; redirect URI
-`https://your-app.mendixcloud.com/oidc/callback`.
+**Studio Pro** — issuer `https://idp.valyd.work`; endpoints `/api/auth/oidc/authorize`,
+`/api/auth/oidc/token`, `/api/auth/oidc/userinfo`; scopes `openid profile email`; enter
+`client_id` + `client_secret`; redirect URI `https://your-app.mendixcloud.com/oidc/callback`.
 
 **Mendix Cloud Portal** — app → Environment → Security → enable SSO → "OpenID Connect" → issuer
 `https://idp.valyd.work` → credentials → save and restart.
 
-**Custom module constants**
+### Custom module constants
 
 ```js
 const OIDC_ISSUER        = "https://idp.valyd.work";
@@ -114,7 +114,7 @@ const OIDC_REDIRECT_URI  = "https://your-app.mendixcloud.com/oidc/callback";
 const OIDC_SCOPES        = "openid profile email";
 ```
 
-**Complete Mendix SSO config**
+### Complete SSO config
 
 ```json
 {
@@ -145,16 +145,6 @@ const OIDC_SCOPES        = "openid profile email";
 }
 ```
 
-## Token expiry (OIDC)
-
-| Token | Expiry |
-|---|---|
-| ID token | 15 minutes |
-| Access token | 1 hour |
-| Refresh token | 30 days |
-
-These differ from TPSSO, where the access token is 15 minutes.
-
 ## Verification
 
 ```bash
@@ -162,21 +152,21 @@ curl -s https://idp.valyd.work/api/.well-known/openid-configuration   # 200, iss
 curl -s https://idp.valyd.work/api/auth/oidc/jwks.json                # 200, body has a "keys" array
 ```
 
-Then run a real login and confirm `userinfo` returns `sub`, `preferred_username`, `email`, `name`,
-`first_name`, `last_name`.
+Then run a real login and confirm userinfo returns `sub`, `preferred_username`, `email`, `name`.
 
 ## Common errors
 
 | Error | Cause | Fix |
-|---|---|---|
+| --- | --- | --- |
 | Invalid `redirect_uri` | Doesn't match the registration | Match exactly — no trailing slash, right protocol |
-| Invalid client credentials | Wrong `client_id`/`client_secret` | Re-check in the portal; regenerate if the secret is lost |
+| Invalid client credentials | Wrong id/secret, or wrong environment | Re-check in the portal for that environment |
 | User mapping failed | Expected claims missing | Include `profile` and `email` in the scopes |
-| ID token validation failed | Signature or expiry | Sync server time; confirm the JWKS endpoint is reachable |
-| Discovery failed | Can't reach `.well-known` | Check connectivity / firewall to `idp.valyd.work` |
+| ID token validation failed | Signature or expiry | Sync server time; confirm the JWKS endpoint is reachable; **never accept `alg: "none"`** |
+| Discovery failed | Can't reach `.well-known` | Check connectivity; try the `/api/` prefixed URL |
+| `410 Gone` | You configured a legacy `/api/auth/tpsso/*` endpoint | Use `/api/auth/oidc/*` |
 
 ## Security practice
 
 Keep `client_secret` server-side only. HTTPS everywhere. Register exact redirect URIs, never
-wildcards, in production. Rotate secrets on a schedule (90 days recommended) — and remember rotation
-invalidates the old secret immediately, so deploy first.
+wildcards, in production. Rotate secrets on a schedule — and remember rotation invalidates the old
+secret immediately, so deploy the new one first.

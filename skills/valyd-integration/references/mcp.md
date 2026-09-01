@@ -8,7 +8,7 @@ One hosted server gives an agent two capabilities:
   browser profile (`do_task`).
 
 | | |
-|---|---|
+| --- | --- |
 | Endpoint | `https://mcp.valyd.work/verification/mcp` |
 | Transport | Streamable HTTP |
 | Auth | OAuth 2.1 Bearer token (RFC 9728 discovery) |
@@ -49,7 +49,7 @@ OAuth-capable MCP client connects with zero custom code.
 ### Token validation — all must hold
 
 | Claim | Requirement |
-|---|---|
+| --- | --- |
 | signature | RS256, verifiable against `https://idp.valyd.work/api/auth/oidc/jwks.json` |
 | `iss` | `https://idp.valyd.work` |
 | `aud` | `https://mcp.valyd.work` |
@@ -75,7 +75,7 @@ Ask the signed-in user to approve a sensitive action with a face scan. **Call be
 — delete, payment, sharing data.
 
 | Name | Type | Required | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `action_type` | string | yes | `"delete"`, `"payment"`, `"update"`, … |
 | `title` | string | yes | Short title shown on the approval prompt |
 | `description` | string | yes | Context the user reads before deciding |
@@ -93,7 +93,7 @@ Ask the signed-in user to approve a sensitive action with a face scan. **Call be
 Poll until `status` is no longer `PENDING`.
 
 | Name | Type | Required | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `valyd_session_id` | string | yes | The id from `verification_request` |
 
 ```json
@@ -112,7 +112,7 @@ Run a web/browser task for the signed-in user — open sites, fill forms, comple
 browser profile **persists per user across calls**. May take several minutes.
 
 | Name | Type | Required | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `task` | string | yes | What the agent should do, in plain language |
 | `start_url` | string | no | Page to open before starting |
 | `user_uuid` | string | no | Profile override; defaults to the signed-in user |
@@ -127,7 +127,7 @@ approves on their phone) — **secrets are never returned to the calling agent i
 ## Status reference
 
 | Status | Meaning |
-|---|---|
+| --- | --- |
 | **PENDING** | Waiting for the user on their Valyd app. Keep polling. |
 | **APPROVED** | The user approved (face-verified). Proceed. |
 | **DENIED** | The system/policy denied the request. |
@@ -288,7 +288,7 @@ resp = client.responses.create(
 ## Common errors
 
 | Symptom | Cause | Fix |
-|---|---|---|
+| --- | --- | --- |
 | `401` with `WWW-Authenticate` on connect | No / expired token | Let the client run the OAuth login (`/mcp` → Authenticate). Code clients: fetch a fresh token. |
 | `invalid_token` | Wrong `aud`, `iss`, `scope`, or signature | Token needs `aud=https://mcp.valyd.work`, `iss=https://idp.valyd.work`, scope including `mcp` |
 | `invalid_scope` | Requested a scope the IdP won't grant | Request only `openid mcp` |
