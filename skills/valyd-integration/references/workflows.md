@@ -31,7 +31,7 @@ Two presets ship, and both use the **same integration code** — only the `workf
 ```text
 Only verify a professional license (no ID scan)   -> the "License Verification" workflowId
 Identity + credential (ID scan + selfie + license) -> the "KYC + License" workflowId
-Unsure -> open https://dev.valyd.work -> Workflows and copy the workflowId of the preset you created
+Unsure -> open https://dev.valyd.id -> Workflows and copy the workflowId of the preset you created
 ```
 
 ## Using it

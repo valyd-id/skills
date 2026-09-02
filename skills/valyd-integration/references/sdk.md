@@ -25,7 +25,7 @@ node --version          # must be v18.x or higher
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
 | `apiKey` | string | — | **Required.** The App API key sent on every request. |
-| `baseUrl` | string | `https://idp.valyd.work` | The API host **for your environment**. |
+| `baseUrl` | string | `https://idp.valyd.id` | The API host **for your environment**. |
 | `webhookSecret` | string | — | When set, `webhooks.constructEvent` / `verify` need no explicit secret. |
 | `timeoutMs` | number | `15000` | Per-request timeout. |
 | `fetch` | typeof fetch | — | Custom fetch (proxies, instrumentation, tests). |

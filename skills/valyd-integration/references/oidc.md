@@ -10,7 +10,7 @@ If you're writing Node and don't need a specific platform's module, prefer `@val
 ## Discovery
 
 ```http
-GET https://idp.valyd.work/api/.well-known/openid-configuration
+GET https://idp.valyd.id/api/.well-known/openid-configuration
 ```
 
 > Note the **`/api/` prefix**. The standard `/.well-known/openid-configuration` path also works,
@@ -18,11 +18,11 @@ GET https://idp.valyd.work/api/.well-known/openid-configuration
 
 ```json
 {
-  "issuer": "https://idp.valyd.work",
-  "authorization_endpoint": "https://idp.valyd.work/api/auth/oidc/authorize",
-  "token_endpoint": "https://idp.valyd.work/api/auth/oidc/token",
-  "userinfo_endpoint": "https://idp.valyd.work/api/auth/oidc/userinfo",
-  "jwks_uri": "https://idp.valyd.work/api/auth/oidc/jwks.json",
+  "issuer": "https://idp.valyd.id",
+  "authorization_endpoint": "https://idp.valyd.id/api/auth/oidc/authorize",
+  "token_endpoint": "https://idp.valyd.id/api/auth/oidc/token",
+  "userinfo_endpoint": "https://idp.valyd.id/api/auth/oidc/userinfo",
+  "jwks_uri": "https://idp.valyd.id/api/auth/oidc/jwks.json",
   "response_types_supported": ["code", "id_token", "token id_token"],
   "grant_types_supported": ["authorization_code", "refresh_token"],
   "subject_types_supported": ["public"],
@@ -44,21 +44,21 @@ For platforms without auto-discovery:
 
 | Setting | Value |
 | --- | --- |
-| Issuer | `https://idp.valyd.work` |
-| Authorization | `https://idp.valyd.work/api/auth/oidc/authorize` |
-| Token | `https://idp.valyd.work/api/auth/oidc/token` |
-| Userinfo | `https://idp.valyd.work/api/auth/oidc/userinfo` |
-| JWKS | `https://idp.valyd.work/api/auth/oidc/jwks.json` |
+| Issuer | `https://idp.valyd.id` |
+| Authorization | `https://idp.valyd.id/api/auth/oidc/authorize` |
+| Token | `https://idp.valyd.id/api/auth/oidc/token` |
+| Userinfo | `https://idp.valyd.id/api/auth/oidc/userinfo` |
+| JWKS | `https://idp.valyd.id/api/auth/oidc/jwks.json` |
 | Auth method | `client_secret_post` / `client_secret_basic` |
 | ID token algorithm | `RS256` |
 
 ```text
 Platform supports auto-discovery
-  -> point it at https://idp.valyd.work/api/.well-known/openid-configuration
+  -> point it at https://idp.valyd.id/api/.well-known/openid-configuration
 Platform does not
   -> enter the manual values above
 Unsure
-  -> curl -s https://idp.valyd.work/api/.well-known/openid-configuration
+  -> curl -s https://idp.valyd.id/api/.well-known/openid-configuration
      HTTP 200 with an "issuer" key means discovery works.
 ```
 
@@ -97,17 +97,17 @@ identity verification.
 
 ## Mendix
 
-**Studio Pro** — issuer `https://idp.valyd.work`; endpoints `/api/auth/oidc/authorize`,
+**Studio Pro** — issuer `https://idp.valyd.id`; endpoints `/api/auth/oidc/authorize`,
 `/api/auth/oidc/token`, `/api/auth/oidc/userinfo`; scopes `openid profile email`; enter
 `client_id` + `client_secret`; redirect URI `https://your-app.mendixcloud.com/oidc/callback`.
 
 **Mendix Cloud Portal** — app → Environment → Security → enable SSO → "OpenID Connect" → issuer
-`https://idp.valyd.work` → credentials → save and restart.
+`https://idp.valyd.id` → credentials → save and restart.
 
 ### Custom module constants
 
 ```js
-const OIDC_ISSUER        = "https://idp.valyd.work";
+const OIDC_ISSUER        = "https://idp.valyd.id";
 const OIDC_CLIENT_ID     = "your-client-id";
 const OIDC_CLIENT_SECRET = "your-client-secret";
 const OIDC_REDIRECT_URI  = "https://your-app.mendixcloud.com/oidc/callback";
@@ -122,13 +122,13 @@ const OIDC_SCOPES        = "openid profile email";
     "enabled": true,
     "provider": "openid_connect",
     "config": {
-      "issuer": "https://idp.valyd.work",
+      "issuer": "https://idp.valyd.id",
       "client_id": "mendix-app-123",
       "client_secret": "your-secret-here",
-      "authorization_endpoint": "https://idp.valyd.work/api/auth/oidc/authorize",
-      "token_endpoint": "https://idp.valyd.work/api/auth/oidc/token",
-      "userinfo_endpoint": "https://idp.valyd.work/api/auth/oidc/userinfo",
-      "jwks_uri": "https://idp.valyd.work/api/auth/oidc/jwks.json",
+      "authorization_endpoint": "https://idp.valyd.id/api/auth/oidc/authorize",
+      "token_endpoint": "https://idp.valyd.id/api/auth/oidc/token",
+      "userinfo_endpoint": "https://idp.valyd.id/api/auth/oidc/userinfo",
+      "jwks_uri": "https://idp.valyd.id/api/auth/oidc/jwks.json",
       "scopes": ["openid", "email", "profile"],
       "redirect_uri": "https://your-app.mendixcloud.com/oidc/callback",
       "token_endpoint_auth_method": "client_secret_post",
@@ -148,8 +148,8 @@ const OIDC_SCOPES        = "openid profile email";
 ## Verification
 
 ```bash
-curl -s https://idp.valyd.work/api/.well-known/openid-configuration   # 200, issuer = https://idp.valyd.work
-curl -s https://idp.valyd.work/api/auth/oidc/jwks.json                # 200, body has a "keys" array
+curl -s https://idp.valyd.id/api/.well-known/openid-configuration   # 200, issuer = https://idp.valyd.id
+curl -s https://idp.valyd.id/api/auth/oidc/jwks.json                # 200, body has a "keys" array
 ```
 
 Then run a real login and confirm userinfo returns `sub`, `preferred_username`, `email`, `name`.

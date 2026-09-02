@@ -7,7 +7,7 @@ serve as your app's sign-in, like "Sign in with Google".
 The user connects, and you get their profile, licenses, and verification proofs. You never see
 their documents — you read the **answers**: `id_verified: true`, verified licenses, age bands.
 
-> **Your OIDC provider is `https://idp.valyd.work`**, discovery at
+> **Your OIDC provider is `https://idp.valyd.id`**, discovery at
 > `/api/.well-known/openid-configuration`. The browser only ever carries a one-time `code`; your
 > backend exchanges it with your `client_secret`, so no token touches the front end.
 
@@ -26,7 +26,7 @@ Scopes must also be enabled for the app in the portal before you may request the
 ## The fastest path: the drop-in button
 
 ```html
-<script src="https://idp.valyd.work/signin/client.js" async></script>
+<script src="https://idp.valyd.id/signin/client.js" async></script>
 <div class="valyd-signin"
      data-client-id="YOUR_CLIENT_ID"
      data-redirect-uri="https://yourapp.com/auth/valyd/callback"
@@ -83,7 +83,7 @@ app.get("/auth/valyd/callback", async (req, res) => {
 ## The flow, step by step
 
 1. **Start.** Your login route generates a random `state` + `nonce` and an S256 PKCE pair, stores
-   them server-side, and redirects to `https://idp.valyd.work/api/auth/oidc/authorize` with
+   them server-side, and redirects to `https://idp.valyd.id/api/auth/oidc/authorize` with
    `client_id`, `redirect_uri`, `response_type=code`, `scope` (**must include `openid`**), `state`
    and `nonce`. The SDK does all of this in `createAuthorizationRequest()`.
 2. **User authenticates and consents.** Valyd shows the consent screen with the requested scopes
@@ -92,7 +92,7 @@ app.get("/auth/valyd/callback", async (req, res) => {
    `state` is echoed back unchanged.**
 4. **CSRF check.** Compare the callback `state` strictly against the stored value. Reject with 400
    on any mismatch, **before touching the code**.
-5. **Exchange the code (server-side).** `POST https://idp.valyd.work/api/auth/oidc/token` with
+5. **Exchange the code (server-side).** `POST https://idp.valyd.id/api/auth/oidc/token` with
    `grant_type: "authorization_code"`, your client credentials, the `code`, the **same**
    `redirect_uri`, and `code_verifier` when PKCE was used.
 6. **Validate the ID token.** Verify the RS256 signature against the JWKS, and check `iss`, `aud`
@@ -122,7 +122,7 @@ What each token is for, and how to validate the ID token: [`tokens.md`](tokens.m
 
 ```http
 POST /api/auth/oidc/token HTTP/1.1
-Host: idp.valyd.work
+Host: idp.valyd.id
 Content-Type: application/json
 
 {

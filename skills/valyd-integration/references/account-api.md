@@ -6,7 +6,7 @@
 Once the user has [connected](connect-oidc.md), three reads cover everything their account holds.
 **The Account API never runs a check** — it reads what previous checks already proved.
 
-Base: `https://idp.valyd.work/api/auth/oidc`
+Base: `https://idp.valyd.id/api/auth/oidc`
 
 | Endpoint | One call gets you |
 | --- | --- |
@@ -41,7 +41,7 @@ match their face before a sensitive action, confirm their location, or re-check 
 Standard OIDC userinfo — returns **top-level claims**, no envelope.
 
 ```bash
-curl -X GET "https://idp.valyd.work/api/auth/oidc/userinfo" \
+curl -X GET "https://idp.valyd.id/api/auth/oidc/userinfo" \
   -H "Accept: application/json" \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 ```

@@ -9,12 +9,12 @@ One hosted server gives an agent two capabilities:
 
 | | |
 | --- | --- |
-| Endpoint | `https://mcp.valyd.work/verification/mcp` |
+| Endpoint | `https://mcp.valyd.id/verification/mcp` |
 | Transport | Streamable HTTP |
 | Auth | OAuth 2.1 Bearer token (RFC 9728 discovery) |
-| Authorization server | `https://idp.valyd.work` |
+| Authorization server | `https://idp.valyd.id` |
 | Required scopes | `openid` `mcp` |
-| Token audience (`aud`) | `https://mcp.valyd.work` |
+| Token audience (`aud`) | `https://mcp.valyd.id` |
 | The user | the access-token `sub`; tools act on their behalf |
 | Tools | `verification_request`, `verification_status`, `do_task` |
 
@@ -29,13 +29,13 @@ The server **does not issue tokens — it only validates them.** The flow is sta
 OAuth-capable MCP client connects with zero custom code.
 
 1. The client calls the MCP endpoint with no token, gets **401** with a `WWW-Authenticate` header
-   pointing at `https://mcp.valyd.work/.well-known/oauth-protected-resource`.
+   pointing at `https://mcp.valyd.id/.well-known/oauth-protected-resource`.
 2. That metadata names the authorization server and scopes:
 
 ```json
 {
-  "resource": "https://mcp.valyd.work",
-  "authorization_servers": ["https://idp.valyd.work"],
+  "resource": "https://mcp.valyd.id",
+  "authorization_servers": ["https://idp.valyd.id"],
   "scopes_supported": ["openid", "mcp"],
   "bearer_methods_supported": ["header"]
 }
@@ -43,22 +43,22 @@ OAuth-capable MCP client connects with zero custom code.
 
 3. The client discovers the IdP, registers (Dynamic Client Registration), and opens a browser. The
    user logs into Valyd and consents.
-4. The client gets an access token bound to `resource = https://mcp.valyd.work` with scope `mcp`,
+4. The client gets an access token bound to `resource = https://mcp.valyd.id` with scope `mcp`,
    and sends `Authorization: Bearer <access_token>` on every call.
 
 ### Token validation — all must hold
 
 | Claim | Requirement |
 | --- | --- |
-| signature | RS256, verifiable against `https://idp.valyd.work/api/auth/oidc/jwks.json` |
-| `iss` | `https://idp.valyd.work` |
-| `aud` | `https://mcp.valyd.work` |
+| signature | RS256, verifiable against `https://idp.valyd.id/api/auth/oidc/jwks.json` |
+| `iss` | `https://idp.valyd.id` |
+| `aud` | `https://mcp.valyd.id` |
 | `scope` | must include `mcp` |
 | `exp` / `iat` / `sub` | present and not expired |
 
 **Code-first clients** (LangChain, OpenAI SDK, scripts): run the OAuth 2.1 **authorization-code +
-PKCE** flow against `https://idp.valyd.work` with `scope=openid mcp` and the resource indicator
-`resource=https://mcp.valyd.work`, then pass the token as a Bearer header. The token is
+PKCE** flow against `https://idp.valyd.id` with `scope=openid mcp` and the resource indicator
+`resource=https://mcp.valyd.id`, then pass the token as a Bearer header. The token is
 **user-bound**, so it must come from a user login — **not** client-credentials.
 
 > The legacy `X-MCP-Client-Id` / `X-MCP-Client-Secret` / `X-MCP-Webhook-Url` header scheme and the
@@ -156,7 +156,7 @@ Combine them: gate a `do_task` behind a `verification_request` approval for sens
 ### Claude Code
 
 ```bash
-claude mcp add --transport http valyd https://mcp.valyd.work/verification/mcp
+claude mcp add --transport http valyd https://mcp.valyd.id/verification/mcp
 ```
 
 Then run `/mcp` and choose **Authenticate** for `valyd` — a browser opens for the Valyd login.
@@ -165,7 +165,7 @@ Then run `/mcp` and choose **Authenticate** for `valyd` — a browser opens for 
 // .mcp.json (project-scoped)
 {
   "mcpServers": {
-    "valyd": { "type": "http", "url": "https://mcp.valyd.work/verification/mcp" }
+    "valyd": { "type": "http", "url": "https://mcp.valyd.id/verification/mcp" }
   }
 }
 ```
@@ -178,7 +178,7 @@ Then run `/mcp` and choose **Authenticate** for `valyd` — a browser opens for 
 ```toml
 # ~/.codex/config.toml
 [mcp_servers.valyd]
-url = "https://mcp.valyd.work/verification/mcp"
+url = "https://mcp.valyd.id/verification/mcp"
 ```
 
 ```bash
@@ -189,18 +189,18 @@ If your build lacks interactive OAuth login:
 
 ```toml
 [mcp_servers.valyd]
-url = "https://mcp.valyd.work/verification/mcp"
+url = "https://mcp.valyd.id/verification/mcp"
 bearer_token_env_var = "VALYD_MCP_TOKEN"
 ```
 
 ```bash
-export VALYD_MCP_TOKEN="<access_token from https://idp.valyd.work>"
+export VALYD_MCP_TOKEN="<access_token from https://idp.valyd.id>"
 ```
 
 ### Cursor / Claude Desktop
 
 ```json
-{ "mcpServers": { "valyd": { "url": "https://mcp.valyd.work/verification/mcp" } } }
+{ "mcpServers": { "valyd": { "url": "https://mcp.valyd.id/verification/mcp" } } }
 ```
 
 Cursor: `.cursor/mcp.json` or Settings → Tools & MCP. Restart the client; it prompts to authorize on
@@ -217,13 +217,13 @@ import asyncio
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.prebuilt import create_react_agent
 
-TOKEN = "<access_token from https://idp.valyd.work, scope: openid mcp>"
+TOKEN = "<access_token from https://idp.valyd.id, scope: openid mcp>"
 
 async def main():
     client = MultiServerMCPClient({
         "valyd": {
             "transport": "streamable_http",
-            "url": "https://mcp.valyd.work/verification/mcp",
+            "url": "https://mcp.valyd.id/verification/mcp",
             "headers": {"Authorization": f"Bearer {TOKEN}"},
         }
     })
@@ -248,13 +248,13 @@ import asyncio
 from agents import Agent, Runner
 from agents.mcp import MCPServerStreamableHttp
 
-TOKEN = "<access_token from https://idp.valyd.work, scope: openid mcp>"
+TOKEN = "<access_token from https://idp.valyd.id, scope: openid mcp>"
 
 async def main():
     async with MCPServerStreamableHttp(
         name="valyd",
         params={
-            "url": "https://mcp.valyd.work/verification/mcp",
+            "url": "https://mcp.valyd.id/verification/mcp",
             "headers": {"Authorization": f"Bearer {TOKEN}"},
         },
     ) as valyd:
@@ -277,7 +277,7 @@ resp = client.responses.create(
     tools=[{
         "type": "mcp",
         "server_label": "valyd",
-        "server_url": "https://mcp.valyd.work/verification/mcp",
+        "server_url": "https://mcp.valyd.id/verification/mcp",
         "headers": {"Authorization": "Bearer <access_token>"},
         "require_approval": "never",
     }],
@@ -290,7 +290,7 @@ resp = client.responses.create(
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | `401` with `WWW-Authenticate` on connect | No / expired token | Let the client run the OAuth login (`/mcp` → Authenticate). Code clients: fetch a fresh token. |
-| `invalid_token` | Wrong `aud`, `iss`, `scope`, or signature | Token needs `aud=https://mcp.valyd.work`, `iss=https://idp.valyd.work`, scope including `mcp` |
+| `invalid_token` | Wrong `aud`, `iss`, `scope`, or signature | Token needs `aud=https://mcp.valyd.id`, `iss=https://idp.valyd.id`, scope including `mcp` |
 | `invalid_scope` | Requested a scope the IdP won't grant | Request only `openid mcp` |
 | `missing_token` | No `Authorization: Bearer` header | Send it on every request |
 | `do_task` returns `success: false` | The web agent couldn't complete the task | Read `response`; refine `task` / `start_url` and retry |
@@ -300,11 +300,11 @@ resp = client.responses.create(
 For an agent that wants the docs rather than the tools:
 
 ```bash
-curl -sL https://docs.valyd.work/llms.txt              # index: hierarchy, base URLs, credential rules
-curl -sL https://docs.valyd.work/llms-full.txt         # full corpus, one file
-curl -sL https://docs.valyd.work/openapi/valyd-id.json      # OpenAPI 3.1 — TPSSO + OIDC
-curl -sL https://docs.valyd.work/openapi/valyd-verify.json  # OpenAPI 3.1 — sessions, core, webhooks
-curl -sL https://docs.valyd.work/valyd-postman-collection.json
+curl -sL https://docs.valyd.id/llms.txt              # index: hierarchy, base URLs, credential rules
+curl -sL https://docs.valyd.id/llms-full.txt         # full corpus, one file
+curl -sL https://docs.valyd.id/openapi/valyd-id.json      # OpenAPI 3.1 — TPSSO + OIDC
+curl -sL https://docs.valyd.id/openapi/valyd-verify.json  # OpenAPI 3.1 — sessions, core, webhooks
+curl -sL https://docs.valyd.id/valyd-postman-collection.json
 ```
 
 Fetch `llms.txt` first — it lists every page as a clean Markdown URL. Fetch pages on demand rather

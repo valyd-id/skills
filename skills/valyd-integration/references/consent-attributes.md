@@ -103,7 +103,7 @@ the SDK needs it.
 
 ```bash
 # 1. Create the request (base64 X25519 public key)
-curl -X POST https://idp.valyd.work/api/auth/attribute-request \
+curl -X POST https://idp.valyd.id/api/auth/attribute-request \
   -H "Authorization: Bearer $CLIENT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{ "valyd_id": "valyd_...",
@@ -113,7 +113,7 @@ curl -X POST https://idp.valyd.work/api/auth/attribute-request \
 # -> { "data": { "request_id": "...", "status": "pending" } }
 
 # 2. The USER approves in their Valyd app. Then poll:
-curl https://idp.valyd.work/api/auth/attribute-request/<request_id>/result \
+curl https://idp.valyd.id/api/auth/attribute-request/<request_id>/result \
   -H "Authorization: Bearer $CLIENT_TOKEN"
 # -> { "data": { "status": "approved", "sealed_payload": "<base64>" } }
 # Open sealed_payload with your X25519 secret key (libsodium sealed box).
@@ -167,7 +167,7 @@ if (attrCode) {
 REST equivalent for fetching the sealed result:
 
 ```bash
-curl "https://idp.valyd.work/api/auth/attribute-request/$ATTR_CODE/result?client_id=$VALYD_CLIENT_ID"
+curl "https://idp.valyd.id/api/auth/attribute-request/$ATTR_CODE/result?client_id=$VALYD_CLIENT_ID"
 # -> { "data": { "status": "released", "custody": "self", "sealed_payload": "<base64>" } }
 ```
 

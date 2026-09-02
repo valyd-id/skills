@@ -1,6 +1,6 @@
 ---
 name: valyd-integration
-description: Integrate Valyd identity — Connect with Valyd (OpenID Connect sign-in), Reusable Verification (workflow sessions for KYC, liveness, face match, age, professional licenses, location), the Unique Human API (liveness and face uniqueness with no user login), the @valyd/sdk Node package, signed webhooks, the Organization Members API, consent-based attribute release, and the Valyd MCP server. Use whenever a task mentions Valyd, valyd_id, "Connect with Valyd", @valyd/sdk, ValydClient, VerifyClient, idp.valyd.work, dev.valyd.work, mcp.valyd.work, workflowId, verification sessions, vrf_ or whsec_ keys, or verifying a person's identity or license through Valyd.
+description: Integrate Valyd identity — Connect with Valyd (OpenID Connect sign-in), Reusable Verification (workflow sessions for KYC, liveness, face match, age, professional licenses, location), the Unique Human API (liveness and face uniqueness with no user login), the @valyd/sdk Node package, signed webhooks, the Organization Members API, consent-based attribute release, and the Valyd MCP server. Use whenever a task mentions Valyd, valyd_id, "Connect with Valyd", @valyd/sdk, ValydClient, VerifyClient, idp.valyd.id, dev.valyd.id, mcp.valyd.id, workflowId, verification sessions, vrf_ or whsec_ keys, or verifying a person's identity or license through Valyd.
 ---
 
 # Valyd integration
@@ -106,9 +106,9 @@ for your client.
 ### 8. Credentials are human-only and environment-scoped
 
 No API mints a `client_id`, `client_secret`, App API key, or `workflowId` — a person creates them
-at `https://dev.valyd.work`. **Ask the human rather than inventing them.**
+at `https://dev.valyd.id`. **Ask the human rather than inventing them.**
 
-These docs describe the **development** environment (`*.valyd.work`). Production and testing mirror
+These docs describe the **development** environment (`*.valyd.id`). Production and testing mirror
 the layout on their own domains with their **own credentials**. Never mix a key from one
 environment with the host of another. Set the host per environment via `VALYD_IDP_URL` (or the
 SDK's `baseUrl`).
@@ -158,13 +158,13 @@ transaction and the X25519 secret key. There is **no browser SDK** — the flow 
 
 | Host | Purpose |
 | --- | --- |
-| `https://idp.valyd.work` | The API — OIDC sign-in, the Account API, and verification |
-| `https://dev.valyd.work` | Developer Portal (human) **and** the Organization Members API (`/api/sdk/*`) |
-| `https://mcp.valyd.work` | MCP server (`/verification/mcp`) |
-| `https://docs.valyd.work` | Docs, API Playground, `llms.txt`, OpenAPI specs |
+| `https://idp.valyd.id` | The API — OIDC sign-in, the Account API, and verification |
+| `https://dev.valyd.id` | Developer Portal (human) **and** the Organization Members API (`/api/sdk/*`) |
+| `https://mcp.valyd.id` | MCP server (`/verification/mcp`) |
+| `https://docs.valyd.id` | Docs, API Playground, `llms.txt`, OpenAPI specs |
 
 One API namespace: authorize, token, JWKS, UserInfo, licenses and verifications all sit under
-`https://idp.valyd.work/api/auth/oidc`. Discovery is at `/.well-known/openid-configuration` (the
+`https://idp.valyd.id/api/auth/oidc`. Discovery is at `/.well-known/openid-configuration` (the
 `/api/.well-known/…` alias also works).
 
 **Response envelopes differ by endpoint.** The OIDC token endpoint returns **standard top-level

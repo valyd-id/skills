@@ -12,7 +12,7 @@ security), and read the verdict when they're done.
 
 ## The flow
 
-**1. Portal setup.** In the [Developer Portal](https://dev.valyd.work) create a **project**, open
+**1. Portal setup.** In the [Developer Portal](https://dev.valyd.id) create a **project**, open
 its **Verification** tab, build a workflow with the checks you need, then copy the project's API
 key (shown once) and the `workflowId`.
 

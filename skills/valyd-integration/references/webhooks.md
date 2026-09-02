@@ -188,7 +188,7 @@ handler treats it as the same event.
 ## Fetch the full decision
 
 ```bash
-curl https://idp.valyd.work/api/v2/session/SES_ID/decision -H "X-API-Key: $VALYD_API_KEY"
+curl https://idp.valyd.id/api/v2/session/SES_ID/decision -H "X-API-Key: $VALYD_API_KEY"
 ```
 
 ## Verifying your handler works

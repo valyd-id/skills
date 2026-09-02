@@ -34,7 +34,7 @@ only reach what the user approved on the consent screen.
 
 ```json
 {
-  "iss": "https://idp.valyd.work",
+  "iss": "https://idp.valyd.id",
   "sub": "valyd_f895da61d5174b81b8dd6a4e3b417339",
   "aud": "YOUR_CLIENT_ID",
   "iat": 1755600000,
@@ -61,7 +61,7 @@ claims to create your own session.
 
 ```json
 {
-  "iss": "https://idp.valyd.work",
+  "iss": "https://idp.valyd.id",
   "sub": "valyd_f895da61d5174b81b8dd6a4e3b417339",
   "aud": "YOUR_CLIENT_ID",
   "iat": 1755600000,
@@ -113,10 +113,10 @@ the system — treat it like a password.
 **Let a library do it.** The SDK's `handleCallback()` / `exchangeCode()` verify the ID token's
 RS256 signature against discovery/JWKS plus issuer, audience, expiry and nonce before returning.
 Any standard OIDC library pointed at
-`https://idp.valyd.work/api/.well-known/openid-configuration` does the same.
+`https://idp.valyd.id/api/.well-known/openid-configuration` does the same.
 
-**Manually:** fetch the signing keys from `https://idp.valyd.work/api/auth/oidc/jwks.json`, verify
-the RS256 signature, then check `iss === "https://idp.valyd.work"`, `aud === your client_id`, `exp`
+**Manually:** fetch the signing keys from `https://idp.valyd.id/api/auth/oidc/jwks.json`, verify
+the RS256 signature, then check `iss === "https://idp.valyd.id"`, `aud === your client_id`, `exp`
 in the future, and `nonce === the value you sent`. **Never accept `alg: "none"`** or an unexpected
 algorithm.
 
@@ -124,7 +124,7 @@ algorithm.
 
 ## Logout
 
-`GET https://idp.valyd.work/api/auth/oidc/logout` — RP-initiated logout, advertised in discovery as
+`GET https://idp.valyd.id/api/auth/oidc/logout` — RP-initiated logout, advertised in discovery as
 `end_session_endpoint`.
 
 | Parameter | Notes |

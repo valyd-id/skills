@@ -1,6 +1,6 @@
 # Valyd Skills
 
-Agent Skills that teach your coding agent to build on [Valyd](https://docs.valyd.work) — sign-in,
+Agent Skills that teach your coding agent to build on [Valyd](https://docs.valyd.id) — sign-in,
 KYC, and verification APIs.
 
 ## Install
@@ -39,11 +39,11 @@ integrations on the first try.
 
 ## Good to know
 
-The references target Valyd's **development** environment (`idp.valyd.work`). Production and
+The references target Valyd's **development** environment (`idp.valyd.id`). Production and
 testing mirror it on their own domains with their own credentials — set the host per environment
 via `VALYD_IDP_URL`, and never mix a key from one environment with the host of another.
 
-Credentials always come from a human at [dev.valyd.work](https://dev.valyd.work). No API mints
+Credentials always come from a human at [dev.valyd.id](https://dev.valyd.id). No API mints
 them, and the skill tells your agent to ask rather than invent them.
 
 ## License

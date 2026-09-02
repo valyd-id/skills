@@ -1,6 +1,6 @@
 # Developer Portal, credentials & accounts
 
-**Everything here is a human browser action at `https://dev.valyd.work`. There is no API.** When an
+**Everything here is a human browser action at `https://dev.valyd.id`. There is no API.** When an
 integration needs any of these values, ask the human for them.
 
 Each environment has its own portal and its own credentials — see
@@ -24,7 +24,7 @@ Connect, and the API key for verification.
 Sign-up needs only a basic Valyd account — **no KYC required** to use the portal. New accounts
 start with a **$100 welcome credit**.
 
-**Step 1.** Open `https://dev.valyd.work` and sign in.
+**Step 1.** Open `https://dev.valyd.id` and sign in.
 
 **Step 2.** Create an app and fill in:
 

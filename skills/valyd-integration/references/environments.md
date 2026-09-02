@@ -1,7 +1,7 @@
 # Environments & credentials
 
 Valyd runs the same product on independent environments. **These references describe the
-development environment (`*.valyd.work`).** Each environment has its own hosts, its own Developer
+development environment (`*.valyd.id`).** Each environment has its own hosts, its own Developer
 Portal, and its own credentials — an app registered in one environment does not exist in another.
 
 ## Hosts per environment
@@ -10,9 +10,9 @@ Every environment exposes the same three hosts under a different domain:
 
 | Role | Development | What it is |
 | --- | --- | --- |
-| **API** (`idp`) | `https://idp.valyd.work` | The API your app calls — verification, the Account API, and sign-in (OAuth 2.0 / OIDC) |
-| **Developer Portal** (`dev`) | `https://dev.valyd.work` | Where a human creates apps, gets keys, and composes workflows. No API automates app creation. |
-| **Docs** (`docs`) | `https://docs.valyd.work` | Docs, the API Playground, and live demos |
+| **API** (`idp`) | `https://idp.valyd.id` | The API your app calls — verification, the Account API, and sign-in (OAuth 2.0 / OIDC) |
+| **Developer Portal** (`dev`) | `https://dev.valyd.id` | Where a human creates apps, gets keys, and composes workflows. No API automates app creation. |
+| **Docs** (`docs`) | `https://docs.valyd.id` | Docs, the API Playground, and live demos |
 
 Production and testing mirror this layout on their own domains. Point your integration at the API
 host for the environment you registered your app in, and **never mix a key from one environment
@@ -42,7 +42,7 @@ environment and never expose a secret in frontend code.
 
 ```bash
 # .env (server-side only)
-VALYD_IDP_URL=https://idp.valyd.work      # the API host for THIS environment
+VALYD_IDP_URL=https://idp.valyd.id      # the API host for THIS environment
 
 # Connect with Valyd (OAuth 2.0 / OIDC)
 VALYD_CLIENT_ID=9357c59bc1794b4c9efe8823e5878147
@@ -57,7 +57,7 @@ VALYD_WORKFLOW_ID=wf_...                  # verification sessions only
 
 **Setting `VALYD_IDP_URL` per environment is how the same code deploys everywhere:** change the
 host, supply that environment's credentials, and nothing else moves. In the SDK this is the
-`baseUrl` constructor option, which defaults to `https://idp.valyd.work`.
+`baseUrl` constructor option, which defaults to `https://idp.valyd.id`.
 
 > Some older material (notably the EVV page) shows an `env: "development"` constructor option on a
 > `Valyd({ ... })` client. The current documented mechanism is `VALYD_IDP_URL` / `baseUrl`. Prefer

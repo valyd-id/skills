@@ -4,8 +4,8 @@ Two kinds of hazard: **things that changed** (older code and older docs are now 
 **things the published docs still disagree about**. When one matters, read the actual API response
 or the OpenAPI spec rather than trusting any page.
 
-Specs: `https://docs.valyd.work/openapi/valyd-id.json` ·
-`https://docs.valyd.work/openapi/valyd-verify.json`
+Specs: `https://docs.valyd.id/openapi/valyd-id.json` ·
+`https://docs.valyd.id/openapi/valyd-verify.json`
 
 ---
 
@@ -27,8 +27,8 @@ a stale API. Delete them. See [`oidc-session-security.md`](oidc-session-security
 `/api/auth/oidc/*`. Policy: removed endpoints return an explicit `410` with a pointer, never a
 silent 404 — so a 410 from Valyd means "you're on the old namespace".
 
-The old TPSSO base `https://idp.valyd.work/api/auth/tpsso` and the old authorize URL
-`https://idp.valyd.work/auth?...&redirect_url=...` are both gone. The current authorize endpoint is
+The old TPSSO base `https://idp.valyd.id/api/auth/tpsso` and the old authorize URL
+`https://idp.valyd.id/auth?...&redirect_url=...` are both gone. The current authorize endpoint is
 `/api/auth/oidc/authorize` and the parameter is `redirect_uri` throughout — the old
 `redirect_url` / `redirect_uri` split no longer exists.
 
@@ -126,11 +126,11 @@ shape is one workflow bundling the checks — see [`recipes.md`](recipes.md).
 
 ## Part 3 — Surprising but correct
 
-**OIDC discovery has an `/api/` prefix.** `https://idp.valyd.work/api/.well-known/openid-configuration`.
+**OIDC discovery has an `/api/` prefix.** `https://idp.valyd.id/api/.well-known/openid-configuration`.
 The standard `/.well-known/…` path also works, but strict libraries that construct the path from
 the issuer may need the URL given explicitly.
 
-**Two hosts, two credential families.** The Members API is on `https://dev.valyd.work/api/sdk/*` —
+**Two hosts, two credential families.** The Members API is on `https://dev.valyd.id/api/sdk/*` —
 the *portal* host — and authenticates with `X-Client-Id` / `X-Client-Secret`, not a Bearer token or
 the App API key.
 

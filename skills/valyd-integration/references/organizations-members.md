@@ -5,8 +5,8 @@ organizations** — there is no "individual vs company" account type. An organiz
 tenant: a team, roles, a face-verified workforce, and public or private apps, governed by one
 billing account.
 
-**Note the different host:** the Members API lives on **`https://dev.valyd.work/api/sdk/*`**, not
-`idp.valyd.work`.
+**Note the different host:** the Members API lives on **`https://dev.valyd.id/api/sdk/*`**, not
+`idp.valyd.id`.
 
 ## Roles
 
@@ -75,7 +75,7 @@ const billing = await client.getBilling();   // { seats, pricePerSeat, balance, 
 Raw REST:
 
 ```bash
-curl -X POST https://dev.valyd.work/api/sdk/members \
+curl -X POST https://dev.valyd.id/api/sdk/members \
   -H "X-Client-Id: $VALYD_CLIENT_ID" \
   -H "X-Client-Secret: $VALYD_CLIENT_SECRET" \
   -H "Content-Type: application/json" \
@@ -118,7 +118,7 @@ reading billing **are** a real API.
 
 ## Getting started
 
-1. Sign in at `https://dev.valyd.work` and open the **Organizations** tab.
+1. Sign in at `https://dev.valyd.id` and open the **Organizations** tab.
 2. Create an organization from the selector — you become its owner.
 3. Invite teammates (developer or admin) and create apps under the organization.
 4. Add members (your workforce) by CSV, singly, or with `addMembers()`; they join by scanning their
